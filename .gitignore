@@ -1,0 +1,23 @@
+# Outputs (synced to cloud storage, never committed)
+runs/
+data/
+train_dir/
+wandb/
+*.lmp
+*.mp4
+*.pth
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+_vizdoom.ini
+_vizdoom/
