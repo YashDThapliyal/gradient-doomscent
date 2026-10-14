@@ -65,7 +65,9 @@ Not written yet. v0 is in progress.
 - **Chosen config: 3 seeds trained at the same time, each with 3 rollout workers x 8 envs per worker** (`configs/v0_defend_center.yaml`).
 - Files: `runs/throughput/mac_m3pro/results.csv`, `concurrent.csv`, and every probe run folder with its `train.log`.
 
-### Step 7: training, checkpoint retention, eval watcher: PASS (2026-10-14)
+### Step 7: training, checkpoint retention, eval watcher: RE-VALIDATING (2026-10-14)
+
+- **The held-out numbers below came from corrupted evaluations** (see the console-overlay bug under Open issues) and were quarantined. The smoke run is being re-evaluated with the fix; this entry will be updated with the corrected numbers.
 
 - Command: `scripts/launch_run.sh configs/v0_smoke.yaml` (4M env steps, checkpoints every 500K, dense every 100K, W&B offline), tmux sessions `train_v0_smoke` and `watch_v0_smoke`.
 - Training finished: `runs/v0_smoke/TRAINING_DONE.json` (`env_steps 4022272`). Every checkpoint kept: 41 milestones in `runs/v0_smoke/sf/checkpoint_p0/milestones/` (step 0 plus every 100K).
@@ -108,6 +110,8 @@ Not written yet. v0 is in progress.
 - **numpy 1.26 and gymnasium 0.29 instead of the newest.** Sample Factory 2.1.1 (the latest release) requires `numpy<2` and `gymnasium<1.0`. ViZDoom 1.3.2 accepts both. Pinned in `pyproject.toml`.
 
 ## Open issues
+
+- **ViZDoom console overlay on recorded episodes (fixed 2026-10-14 15:45).** From the second recorded episode on a game instance, ViZDoom drew its console log over the top of the screen, so the policy saw a corrupted view. Every evaluation episode after each eval worker's first was affected; the smoke run's 3.5M checkpoint scored 1.56 held-out kills under the bug and 5.35 when played without recording. Found because held-out kills fell while training kills rose; per-episode results showed each worker's first episode scoring 5 to 7 kills and the rest 1 to 2. `render_messages`, `console_enabled`, and `+con_notifytime 0` do not help. Fix: a fresh game for every recorded episode (`doomscent/env.py`), with a regression test (`test_recorded_episodes_show_the_policy_the_same_screen`, which fails without the fix). Training never records and is unaffected; the baseline does not record and is unaffected; random-agent clips are unaffected (the random policy ignores the screen). All earlier evaluation outputs were moved, not deleted, to `runs/<run>/_invalid_eval_console_bug/`, and every checkpoint is being re-evaluated.
 
 - **Cloud sync is not configured.** The spec asks for rclone sync of `runs/` after every eval. The hook exists (`sync.rclone_remote` in config, called by the eval watcher) but no bucket or credentials are available on this machine, so it is set to null and skipped.
 - **W&B runs are offline** (no W&B credentials on this machine). Each run's `runs/<run>/wandb/offline-run-*` can be uploaded later with `wandb sync`.
