@@ -207,6 +207,12 @@ class DoomEnv(gym.Env):
         if seed is not None:
             self._rng = np.random.default_rng(seed)
         options = options or {}
+        if options.get("record_path") and self.game is not None:
+            # ViZDoom bug: a recorded episode on a game that already played one shows the
+            # engine console over the screen, corrupting the policy's view. Every recorded
+            # episode therefore gets a fresh game.
+            self.game.close()
+            self.game = None
         if self.game is None:
             self.game = self._init_game()
         ep_seed = options.get("episode_seed")

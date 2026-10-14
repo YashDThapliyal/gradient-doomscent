@@ -33,3 +33,38 @@ def test_record_and_replay_match(v0_cfg, tmp_path):
     info = probe_video(rr.outputs["plain"])
     assert info["frames"] == rr.replay_tics > 0
     assert (info["width"], info["height"], info["fps"]) == (640, 360, 35.0)
+
+
+@pytest.mark.game
+def test_recorded_episodes_show_the_policy_the_same_screen(v0_cfg, tmp_path):
+    """Regression: ViZDoom drew its console over every recorded episode after the first."""
+    import numpy as np
+
+    from doomscent.rollout import run_episode
+
+    class Peek:
+        """Constant action; keeps the observation seen at step 6."""
+
+        def reset(self):
+            self.t, self.seen = 0, None
+
+        def act(self, obs):
+            self.t += 1
+            if self.t == 6:
+                self.seen = obs.copy()
+            return [0, 1], {}
+
+    seeds = (900000000, 900000004, 900000008)
+    env = make_env(v0_cfg, split="heldout")
+    pol = Peek()
+    plain = []
+    for s in seeds:
+        run_episode(env, pol, s)
+        plain.append(pol.seen)
+    recorded = []
+    for i, s in enumerate(seeds):
+        record_episode(env, pol, s, tmp_path, "t", 0, i)
+        recorded.append(pol.seen)
+    env.close()
+    for a, b in zip(plain, recorded, strict=True):
+        assert np.array_equal(a, b)
