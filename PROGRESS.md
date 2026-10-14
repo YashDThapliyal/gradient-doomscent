@@ -6,7 +6,7 @@ Not written yet. v0 is in progress.
 
 ## Status
 
-- Current step: 4 (scripted baseline over 100 held-out episodes).
+- Current step: 5 (demo recording, sidecars, renderer).
 
 ## Gates
 
@@ -36,6 +36,15 @@ Not written yet. v0 is in progress.
 - Spin-and-shoot beats random: `test_spin_and_shoot_beats_random`, seeds 200 to 219: `random 2.60 vs spin-and-shoot 4.70 kills/episode`.
 - Files: `doomscent/env.py`, `doomscent/actions.py`, `doomscent/reward.py`, `doomscent/detectors.py`, `doomscent/rollout.py`, `configs/v0_defend_center*.yaml`.
 
+### Step 4: scripted baseline and v0 gate value: DONE (2026-10-14)
+
+- Command: `uv run doomscent baseline --config configs/v0_defend_center.yaml`
+- Turn speed chosen on training seeds 0 to 29 (mean kills): left slow 3.90, left med 3.80, left fast 2.67, right slow 4.10, **right med 4.43**, right fast 2.90.
+- Held-out measurement, spin-and-shoot (turn right 4 deg/tic, attack every step), 100 episodes, seeds 900000000 to 900000099:
+  - **Mean kills 4.42, 95% bootstrap CI [4.22, 4.63]**, sd 0.99, accuracy 0.17, survival 13.8 s, deaths 1.0.
+  - **v0 gate: 1.5 x 4.42 = 6.63 mean kills per episode** on 100 held-out episodes.
+- Files: `runs/baseline/defend_the_center/baseline.json`, `episodes.csv`, `config.yaml`.
+
 ## Decisions
 
 - Package name is `doomscent` (not `doomrl`), per the project brief. W&B project name is `gradient-doomscent`.
@@ -48,6 +57,7 @@ Not written yet. v0 is in progress.
 - **Detectors live in `doomscent/detectors.py`,** not `wrappers.py`. They are pure functions over the sidecar step records, so they can be re-run on old recordings. Same for the reward, in `doomscent/reward.py`. Small modules, per CLAUDE.md.
 - **Seed ranges:** training episodes draw from [0, 1,000,000); held-out evaluation uses [900,000,000, 900,100,000), with episode i of an evaluation using seed 900,000,000 + i. `load_config` rejects overlapping ranges. ViZDoom replays a seed exactly (tested).
 - **Enemy visibility** for the pacifist detector counts labels-buffer objects whose class is a Doom monster. Defend the Center's monsters report as `Demon` and `MarineChainsawVzd`.
+- **Baseline turn speed is picked on training seeds** from all six turn choices (best mean kills over 30 episodes each), then measured on held-out seeds. Picking the strongest spin speed makes the gate harder, not easier.
 - `spec.md` and `claude.md` were provided in lowercase. macOS is case-insensitive, so they resolve as `SPEC.md` and `CLAUDE.md`; left untouched.
 
 ## Deviations from spec

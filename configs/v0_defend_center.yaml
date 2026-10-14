@@ -42,7 +42,7 @@ seeds:
 
 baseline:
   name: spin_and_shoot
-  turn_choices_to_try: [1, 2, 3]     # turn head indices (right slow, med, fast); best on train seeds wins
+  turn_choices_to_try: [1, 2, 3, 4, 5, 6]   # every turn speed and direction; best on train seeds wins
   selection_episodes: 30             # per candidate, on training seeds
   episodes: 100                      # held-out measurement
   gate_multiplier: 1.5
