@@ -128,3 +128,35 @@ class WallClockLimitObserver(AlgoObserver):
     def on_training_step(self, runner: Runner, training_iteration_since_resume: int) -> None:
         if self.start is not None and time.time() - self.start > self.seconds:
             runner._stop_training()
+
+
+# ----- W&B ----------------------------------------------------------------------------------
+
+
+def init_wandb_compat(cfg: Any) -> None:
+    """Sample Factory's init_wandb without `Settings(start_method="fork")`, which wandb 0.30
+    rejects. Same project, group, tags, TensorBoard sync, and resumable run id."""
+    if not cfg.with_wandb:
+        return
+    import wandb
+
+    if "wandb_unique_id" not in cfg:
+        cfg.wandb_unique_id = f"{cfg.experiment}_{time.strftime('%Y%m%d_%H%M%S')}"
+    wandb.init(
+        project=cfg.wandb_project,
+        entity=cfg.wandb_user,
+        sync_tensorboard=True,
+        id=cfg.wandb_unique_id,
+        name=os.environ.get("DOOMSCENT_RUN_NAME", cfg.wandb_unique_id),
+        group=cfg.env if cfg.wandb_group is None else cfg.wandb_group,
+        job_type=cfg.wandb_job_type,
+        tags=cfg.wandb_tags,
+        resume="allow",
+    )
+    wandb.config.update(dict(cfg), allow_val_change=True)
+
+
+def patch_wandb_init() -> None:
+    import sample_factory.algo.runners.runner as sf_runner
+
+    sf_runner.init_wandb = init_wandb_compat

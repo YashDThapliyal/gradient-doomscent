@@ -83,7 +83,7 @@ Not written yet. v0 is in progress.
 - **Env steps are frames:** Sample Factory counts env steps as agent steps times frame skip (4), so checkpoint intervals, the x-axes of every figure, and `train_for_env_steps` are in game frames. This matches how Sample Factory reports Doom FPS.
 - **`learner_threads` config option.** Sample Factory pins its learner to one torch thread; `doomscent/sf_integration.py` lets config raise it (applied inside the learner process). It did not help on this Mac (see step 6), so v0 uses 1.
 - **Wall-clock limit observer.** Sample Factory 2.1.1's `--train_for_seconds` never fires in the parallel runner (its `total_train_seconds` is never updated); `train.max_wall_seconds` uses our own observer instead. Only the throughput test uses it.
-- `spec.md` and `claude.md` were provided in lowercase. macOS is case-insensitive, so they resolve as `SPEC.md` and `CLAUDE.md`; left untouched.
+- `spec.md` and `claude.md` were provided in lowercase. They were renamed (contents untouched) to `SPEC.md` and `CLAUDE.md`, the names CLAUDE.md and the README use, so links work on case-sensitive systems such as Linux and GitHub.
 
 ## Deviations from spec
 

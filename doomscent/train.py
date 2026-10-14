@@ -125,8 +125,12 @@ def main(argv: list[str] | None = None) -> int:
     from doomscent.sf_integration import (
         StepCheckpointObserver,
         WallClockLimitObserver,
+        patch_wandb_init,
         register_doomscent_env,
     )
+
+    patch_wandb_init()
+    os.environ["DOOMSCENT_RUN_NAME"] = str(cfg.run_name)
 
     register_doomscent_env(str(paths.config), cfg.train.sf_env_name)
     sfargs = sf_argv(cfg, paths)
