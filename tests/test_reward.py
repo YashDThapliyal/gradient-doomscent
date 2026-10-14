@@ -71,3 +71,13 @@ def test_scale_multiplies_everything():
 def test_weights_from_config(v0_cfg):
     w = RewardWeights.from_config(v0_cfg.reward)
     assert w.kill == 1.0 and w.death == -1.0 and w.damage_taken_per_hp == -0.005
+
+
+def test_ammo_spent_term_off_by_default_and_charged_when_set():
+    prev = {**BASE, "SELECTED_WEAPON": 2, "SELECTED_WEAPON_AMMO": 26}
+    cur = {**prev, "SELECTED_WEAPON_AMMO": 25}
+    assert step_reward(prev, cur, W, False).total == 0.0
+    w2 = RewardWeights(**{**W.__dict__, "ammo_spent_per_unit": -0.03})
+    assert step_reward(prev, cur, w2, False).ammo_spent == pytest.approx(-0.03)
+    switched = {**cur, "SELECTED_WEAPON": 3}
+    assert step_reward(prev, switched, w2, False).ammo_spent == 0.0

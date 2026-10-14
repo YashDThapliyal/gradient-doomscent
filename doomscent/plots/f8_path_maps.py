@@ -79,7 +79,7 @@ def build(paths: RunPaths) -> FigureSpec:
         xmin, ymin, xmax, ymax = geom.bounds
         pad = 0.06 * max(xmax - xmin, ymax - ymin)
         for i, (step, name, tracks, shares) in enumerate(panels):
-            ax = fig.add_axes((left + i * w, bottom, w * 0.94, top - bottom))
+            ax = fig.add_axes((left + i * w, bottom, w * 0.94, (top - bottom) * 0.86))
             ax.set_aspect("equal")
             ax.axis("off")
             for x1, y1, x2, y2 in geom.walls:

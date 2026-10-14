@@ -57,19 +57,21 @@ def build(paths: RunPaths) -> FigureSpec:
         left, bottom, right, top = fig.rect
         ax = fig.add_axes((left, bottom, right - left, top - bottom))
         ax.axis("off")
-        cols = [0.0, 0.52, 0.70, 1.0]
+        cols = [0.0, 0.50, 0.54, 1.0]
+        aligns = ["left", "right", "left", "right"]
         heads = ["", "best checkpoint", "95% interval", "scripted baseline"]
         n = len(rows) + 1
         dy = 1.0 / n
-        fs = 12 if size != "square" else 11
+        row_pt = (top - bottom) * fig.get_size_inches()[1] * 72 / n
+        fs = min(13.0, row_pt * 0.5)
         for j, h in enumerate(heads):
             ax.text(
                 cols[j],
                 1 - dy * 0.5,
                 h,
                 color=theme.subtext,
-                fontsize=fs - 1.5,
-                ha="left" if j == 0 else "right",
+                fontsize=fs * 0.85,
+                ha=aligns[j],
                 va="center",
                 transform=ax.transAxes,
             )
@@ -88,7 +90,7 @@ def build(paths: RunPaths) -> FigureSpec:
                     color=color,
                     fontsize=fs,
                     fontweight=weight,
-                    ha="left" if j == 0 else "right",
+                    ha=aligns[j],
                     va="center",
                     transform=ax.transAxes,
                 )

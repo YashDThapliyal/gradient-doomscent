@@ -92,7 +92,9 @@ def header(fig: Figure, title: str, subtitle: str, theme: Theme) -> None:
         linespacing=1.25,
     )
     y -= (title.count("\n") + 1) * TITLE_LINE_IN / h_in + 0.06 / h_in
-    fig.text(left, y, subtitle, fontsize=10.5, color=theme.subtext, va="top", ha="left")
+    fig.text(
+        left, y, subtitle, fontsize=10.5, color=theme.subtext, va="top", ha="left", linespacing=1.3
+    )
 
 
 def direct_label(ax: Axes, x: float, y: float, text: str, color: str, dx: float = 6) -> None:
@@ -109,6 +111,22 @@ def direct_label(ax: Axes, x: float, y: float, text: str, color: str, dx: float 
         ha="left",
         annotation_clip=False,
     )
+
+
+def direct_labels(ax: Axes, items: Sequence[tuple[float, float, str, str]], min_gap: float = 0.05):
+    """Label several line ends, nudging labels apart so they never overlap.
+
+    `items` are (x, y, text, color); `min_gap` is a fraction of the y-axis range.
+    """
+    lo, hi = ax.get_ylim()
+    gap = (hi - lo) * min_gap
+    order = sorted(range(len(items)), key=lambda i: items[i][1])
+    ys = [items[i][1] for i in order]
+    for k in range(1, len(ys)):
+        ys[k] = max(ys[k], ys[k - 1] + gap)
+    for k, i in enumerate(order):
+        x, _, label, color = items[i]
+        direct_label(ax, x, ys[k], label, color)
 
 
 def ref_line(ax: Axes, y: float, text: str, theme: Theme, dashes: Sequence[float] = (4, 3)):
@@ -153,13 +171,15 @@ class FigureSpec:
     right_margin_in: float = 1.3  # room for direct labels
 
 
-def layout_rect(w_in: float, h_in: float, right_in: float, title_lines: int) -> tuple[float, ...]:
+def layout_rect(
+    w_in: float, h_in: float, right_in: float, title_lines: int, sub_lines: int = 1
+) -> tuple[float, ...]:
     """(left, bottom, right, top) of the plotting area in figure fractions."""
-    top_in = 0.28 + title_lines * TITLE_LINE_IN + 0.06 + SUBTITLE_IN + 0.32
+    top_in = 0.28 + title_lines * TITLE_LINE_IN + 0.06 + sub_lines * SUBTITLE_IN + 0.32
     return (0.85 / w_in, 0.75 / h_in, 1 - right_in / w_in, 1 - top_in / h_in)
 
 
-WRAP = {"16x9": 80, "square": 54, "paper": 66}
+WRAP = {"16x9": 68, "square": 44, "paper": 54}
 
 
 def export(
@@ -175,10 +195,13 @@ def export(
             w_in, h_in = w_px / BASE_DPI, h_px / BASE_DPI
             fig = plt.figure(figsize=(w_in, h_in))
             title = _wrap(spec.title, WRAP[size])
-            rect = layout_rect(w_in, h_in, spec.right_margin_in, title.count("\n") + 1)
+            subtitle = _wrap(spec.subtitle, int(WRAP[size] * 1.45))
+            rect = layout_rect(
+                w_in, h_in, spec.right_margin_in, title.count("\n") + 1, subtitle.count("\n") + 1
+            )
             fig.rect = rect  # type: ignore[attr-defined]
             spec.draw(fig, theme, size)
-            header(fig, title, spec.subtitle, theme)
+            header(fig, title, subtitle, theme)
             stem = f"{spec.fig_id}_{spec.name}_{size}_{theme_name}"
             for ext in ("png", "pdf"):
                 p = out_dir / f"{stem}.{ext}"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from doomscent.plots.common import FigureSpec, direct_label, fmt_steps, main_axes, step_axis
+from doomscent.plots.common import FigureSpec, direct_labels, fmt_steps, main_axes, step_axis
 from doomscent.plots.data import sibling_runs, subtitle
 from doomscent.plots.f1_learning_curve import seed_matrix
 from doomscent.runs import RunPaths
@@ -31,9 +31,14 @@ def build(paths: RunPaths) -> FigureSpec:
         ax = main_axes(fig)
         ax.plot(steps, d, color=theme.accent, lw=2.2)
         ax.plot(steps, t, color=theme.muted, lw=2.0)
-        direct_label(ax, steps[-1], d[-1], "damage dealt", theme.accent)
-        direct_label(ax, steps[-1], t[-1], "damage taken", theme.muted)
         ax.set_ylim(0, max(d.max(), t.max()) * 1.12)
+        direct_labels(
+            ax,
+            [
+                (steps[-1], d[-1], "damage dealt", theme.accent),
+                (steps[-1], t[-1], "damage taken", theme.muted),
+            ],
+        )
         ax.set_xlim(0, steps[-1])
         step_axis(ax)
         ax.set_ylabel("health points per episode")

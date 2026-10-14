@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from doomscent.plots.common import FigureSpec, direct_label, main_axes, ref_line
+from doomscent.plots.common import FigureSpec, direct_labels, main_axes, ref_line
 from doomscent.runs import RUNS_ROOT, RunPaths
 
 MACHINE_NAMES = {"mac_m3pro": "M3 Pro Mac (12 cores)"}
@@ -53,10 +53,11 @@ def build(paths: RunPaths) -> FigureSpec:
         ax = main_axes(fig)
         envs = sorted(df["envs_per_worker"].unique())
         shades = [theme.muted2, theme.muted, theme.subtext, theme.text][-len(envs) :]
+        ends = []
         for e, c in zip(envs, shades, strict=False):
             d = df[df.envs_per_worker == e].sort_values("workers")
             ax.plot(d.workers, d.fps / 1000, color=c, lw=1.8, marker="o", ms=4)
-            direct_label(ax, d.workers.iloc[-1], d.fps.iloc[-1] / 1000, f"{e} envs/worker", c)
+            ends.append((d.workers.iloc[-1], d.fps.iloc[-1] / 1000, f"{e} envs/worker", c))
         sel = df[(df.workers == chosen[0]) & (df.envs_per_worker == chosen[1])]
         if len(sel):
             ax.plot(sel.workers, sel.fps / 1000, "o", ms=10, mfc="none", mec=theme.accent, mew=2)
@@ -73,6 +74,7 @@ def build(paths: RunPaths) -> FigureSpec:
             ref_line(ax, tot / 1000, f"{n_runs} concurrent runs, total", theme)
         ax.set_ylim(0, max(df.fps.max(), tot if conc is not None else 0) / 1000 * 1.18)
         ax.set_xticks(sorted(df.workers.unique()))
+        direct_labels(ax, ends)
         ax.set_xlabel("rollout workers")
         ax.set_ylabel("thousand frames per second")
 

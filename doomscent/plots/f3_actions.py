@@ -36,7 +36,7 @@ def build(paths: RunPaths) -> FigureSpec:
         total = sum(n_rows)
         h_avail = top - bottom - gap * (len(heads) - 1)
         y = top
-        for h, n in zip(heads, n_rows, strict=True):
+        for idx, (h, n) in enumerate(zip(heads, n_rows, strict=True)):
             hh = h_avail * n / total
             ax = fig.add_axes((left + 0.08, y - hh, right - left - 0.08, hh))
             ax.imshow(
@@ -50,7 +50,8 @@ def build(paths: RunPaths) -> FigureSpec:
                 h["name"], loc="left", fontsize=11, fontweight="semibold", color=theme.text, pad=4
             )
             k = max(1, len(steps) // 8)
-            ax.set_xticks(range(0, len(steps), k), [fmt_steps(s) for s in steps[::k]])
+            labels = [fmt_steps(s) for s in steps[::k]] if idx == len(heads) - 1 else []
+            ax.set_xticks(range(0, len(steps), k), labels)
             y -= hh + gap
         ax.set_xlabel("checkpoint (environment steps)")
 

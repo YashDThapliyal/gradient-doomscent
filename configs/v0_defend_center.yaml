@@ -33,6 +33,7 @@ reward:
   damage_taken_per_hp: -0.005
   health_armor_pickup_per_point: 0.005
   weapon_ammo_pickup: 0.1
+  ammo_spent_per_unit: 0.0           # not in the spec's base reward; probe B tests it
   scale: 1.0                         # multiplier applied to the summed reward
 
 seeds:
@@ -48,13 +49,13 @@ baseline:
   gate_multiplier: 1.5
 
 detectors:
-  spinning:   {enabled: true, min_turn_fraction: 0.9, same_direction_fraction: 0.9, max_displacement: 64.0}
+  spinning:   {enabled: true, min_turn_fraction: 0.95, same_direction_fraction: 0.95, max_displacement: 64.0}
   stuck:      {enabled: true, min_forward_steps: 60, max_displacement: 16.0}
   camping:    {enabled: false, radius: 256.0, min_fraction: 0.8}   # multiplayer only
-  wasted_fire: {enabled: true, min_shots: 20, max_accuracy: 0.1}
+  wasted_fire: {enabled: true, min_shots: 22, max_accuracy: 0.05}
   pacifist:   {enabled: true, min_enemy_visible_steps: 50}
   suicide:    {enabled: true, rocket_weapon_slot: 5, window_steps: 8}
-  reward_spike: {enabled: true, window: 100, min_history: 20, z: 4.0}
+  reward_spike: {enabled: true, window: 100, min_history: 20, z: 4.0}   # vs the other episodes of the same checkpoint
   max_clips_per_detector: 3          # rendered clips per detector per eval; all hits go to flagged.csv
 
 train:
@@ -84,10 +85,11 @@ train:
 eval:
   episodes: 100
   deterministic: true
-  num_workers: 4
+  num_workers: 2                     # eval processes per watcher; 3 watchers share the CPU with 3 trainings
   clips_first_n: 3
   multi_kill_window_steps: 35        # kills within this many agent steps (~4 s) form a streak
   multi_kill_min: 3
+  max_multi_kill_clips: 2            # render only the strongest streak episodes
   train_clip_episodes: 2
   best_clip_episodes: 3
   final_clip_episodes: 5

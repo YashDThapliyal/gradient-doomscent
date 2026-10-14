@@ -131,22 +131,12 @@ def render_many(jobs: list[dict[str, Any]], workers: int) -> list[dict[str, Any]
 # ----- evaluation -------------------------------------------------------------------------------
 
 
-def reward_history(paths: RunPaths, label: str, window: int) -> list[float]:
-    """Episode rewards from the most recent earlier evaluation, for the reward-spike check."""
-    d = paths.metrics / "eval_episodes"
-    earlier = sorted(p for p in d.glob("step_*.csv") if p.stem < label) if d.exists() else []
-    if not earlier:
-        return []
-    return pd.read_csv(earlier[-1])["reward"].tolist()[-window:]
-
-
 def flag_episodes(paths: RunPaths, df: pd.DataFrame, label: str, cfg: Any) -> list[dict]:
     det_cfg = OmegaConf.to_container(cfg.detectors, resolve=True)
-    history = reward_history(paths, label, int(cfg.detectors.reward_spike.window))
     flags = []
     for row in df.itertuples():
         sc = read_sidecar(row.sidecar)
-        hist = history + df["reward"].iloc[: row.Index].tolist()
+        hist = df["reward"].drop(index=row.Index).tolist()  # same checkpoint, other episodes
         found = run_detectors(sc["steps"], sc["start_vars"], sc["died"], row.reward, hist, det_cfg)
         for f in found:
             flags.append(
@@ -256,7 +246,9 @@ def evaluate(
     clip_eps = set(df["episode"].iloc[: int(e.clips_first_n)])
     best_i = df.sort_values(["kills", "reward"], ascending=False).index[0]
     clip_eps.add(int(df.loc[best_i, "episode"]))
-    clip_eps |= set(df.loc[df["multi_kill_max"] >= int(e.multi_kill_min), "episode"])
+    streaks = df[df["multi_kill_max"] >= int(e.multi_kill_min)]
+    streaks = streaks.sort_values(["multi_kill_max", "kills"], ascending=False)
+    clip_eps |= set(streaks["episode"].head(int(e.get("max_multi_kill_clips", 2))))
     render_jobs = []
     if render:
         for ep in sorted(clip_eps):

@@ -6,7 +6,7 @@ import json
 
 import numpy as np
 
-from doomscent.plots.common import FigureSpec, direct_label, main_axes, step_axis
+from doomscent.plots.common import FigureSpec, direct_labels, main_axes, step_axis
 from doomscent.plots.data import load_flagged, load_train, subtitle
 from doomscent.runs import RunPaths
 from doomscent.stats import ema
@@ -35,12 +35,13 @@ def build(paths: RunPaths) -> FigureSpec:
     def draw(fig, theme, size):
         ax = main_axes(fig)
         colors = [theme.accent, theme.muted, theme.second, theme.muted2]
+        ends = []
         for h, c in zip(heads, colors, strict=False):
             xs, ys = series[h]
             ax.plot(xs, ys, color=c, lw=0.8, alpha=0.35)
             sm_h = ema(ys, 0.05)
             ax.plot(xs, sm_h, color=c, lw=2.0)
-            direct_label(ax, xs[-1], sm_h[-1], f"{h} head", c)
+            ends.append((xs[-1], sm_h[-1], f"{h} head", c))
         if len(flags):
             fx = flags["step"].to_numpy(dtype=float)
             ax.plot(
@@ -57,5 +58,6 @@ def build(paths: RunPaths) -> FigureSpec:
         ax.set_xlim(0, max(series[h][0][-1] for h in heads))
         step_axis(ax)
         ax.set_ylabel("entropy (nats)")
+        direct_labels(ax, ends)
 
     return FigureSpec("F4", "entropy_and_exploits", title, sub, draw, right_margin_in=1.4)

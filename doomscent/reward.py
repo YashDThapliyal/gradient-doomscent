@@ -20,6 +20,7 @@ class RewardWeights:
     damage_taken_per_hp: float
     health_armor_pickup_per_point: float
     weapon_ammo_pickup: float
+    ammo_spent_per_unit: float = 0.0  # not in the spec's base reward; 0 unless a config sets it
     scale: float = 1.0
 
     @classmethod
@@ -35,6 +36,7 @@ class RewardBreakdown:
     damage_taken: float
     health_armor_pickup: float
     weapon_ammo_pickup: float
+    ammo_spent: float = 0.0
 
     @property
     def total(self) -> float:
@@ -45,6 +47,7 @@ class RewardBreakdown:
             + self.damage_taken
             + self.health_armor_pickup
             + self.weapon_ammo_pickup
+            + self.ammo_spent
         )
 
 
@@ -82,6 +85,9 @@ def step_reward(
     if not died:
         gained = max(0.0, _delta(prev, cur, "HEALTH")) + max(0.0, _delta(prev, cur, "ARMOR"))
     events = pickup_events(prev, cur, ammo_vars, weapon_vars)
+    spent = 0.0
+    if cur.get("SELECTED_WEAPON") == prev.get("SELECTED_WEAPON"):
+        spent = max(0.0, -_delta(prev, cur, "SELECTED_WEAPON_AMMO"))
     return RewardBreakdown(
         kills=w.scale * w.kill * kills,
         death=w.scale * (w.death if died else 0.0),
@@ -89,4 +95,5 @@ def step_reward(
         damage_taken=w.scale * w.damage_taken_per_hp * taken,
         health_armor_pickup=w.scale * w.health_armor_pickup_per_point * gained,
         weapon_ammo_pickup=w.scale * w.weapon_ammo_pickup * events,
+        ammo_spent=w.scale * w.ammo_spent_per_unit * spent,
     )
