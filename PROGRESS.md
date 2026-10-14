@@ -6,7 +6,7 @@ Not written yet. v0 is in progress.
 
 ## Status
 
-- Current step: 5 (demo recording, sidecars, renderer).
+- Current step: 6 (throughput test).
 
 ## Gates
 
@@ -45,6 +45,15 @@ Not written yet. v0 is in progress.
   - **v0 gate: 1.5 x 4.42 = 6.63 mean kills per episode** on 100 held-out episodes.
 - Files: `runs/baseline/defend_the_center/baseline.json`, `episodes.csv`, `config.yaml`.
 
+### Step 5: demo recording, sidecars, renderer: PASS (2026-10-14)
+
+- Command: `uv run doomscent record --run v0_random_agent --config configs/v0_defend_center.yaml --ckpt random --episodes 3 --kind train --overlay` (52 s wall).
+- Output in `runs/v0_random_agent/clips/train/`: per episode a `.lmp` demo, a `.json.gz` sidecar, and three clips (plain, `__minimap`, `__overlay`), for example `v0_random_agent__step_0000000__dtc__seed_900000002__ep02__kills4__minimap.mp4`.
+- Clips play back: every clip decoded end to end with PyAV (`doomscent.video.probe_video`): 1280x720 (overlay 1680x720), 35.0 fps, H.264.
+  - seed 900000000: 278 frames (7.94 s), seed 900000001: 304 frames, seed 900000002: 442 frames.
+- Sidecars match episode lengths: sidecar step counts 70, 76, 111 equal the env's episode step counts; sidecar `episode_tics` 288, 314, 452 equal the replay's episode time exactly; replayed kills equal recorded kills (3, 0, 4). Frame count is episode tics minus the scenario's 10 start-up tics.
+- Test: `tests/test_recording.py::test_record_and_replay_match` (records, replays, decodes, checks lengths), plus filename and path-guard tests. Suite: `51 passed`.
+
 ## Decisions
 
 - Package name is `doomscent` (not `doomrl`), per the project brief. W&B project name is `gradient-doomscent`.
@@ -58,12 +67,18 @@ Not written yet. v0 is in progress.
 - **Seed ranges:** training episodes draw from [0, 1,000,000); held-out evaluation uses [900,000,000, 900,100,000), with episode i of an evaluation using seed 900,000,000 + i. `load_config` rejects overlapping ranges. ViZDoom replays a seed exactly (tested).
 - **Enemy visibility** for the pacifist detector counts labels-buffer objects whose class is a Doom monster. Defend the Center's monsters report as `Demon` and `MarineChainsawVzd`.
 - **Baseline turn speed is picked on training seeds** from all six turn choices (best mean kills over 30 episodes each), then measured on held-out seeds. Picking the strongest spin speed makes the gate harder, not easier.
+- **Sidecars are gzipped JSON (`.json.gz`).** About 10x smaller; 100 episodes per evaluation over dozens of checkpoints would otherwise reach gigabytes.
+- **Clip filenames** follow the spec's format, with the step zero-padded to at least 7 digits (`step_0000000`, `step_2500000`), which also matches the spec's `clips/train/step_0000000_*` pattern up to the run-name prefix. Plain clips have no suffix; the other versions end in `__minimap.mp4` and `__overlay.mp4`.
+- **Overlay version** is 1680x720: the 1280x720 game view plus a 400 px side panel (step, seed, kills, health, value meter, per-head action probabilities), so nothing covers the game.
+- **Clip seeds:** step-0 and per-checkpoint training clips use the first held-out seeds (900000000, 900000001, ...), so the same seed is available at every checkpoint for the montage.
 - `spec.md` and `claude.md` were provided in lowercase. macOS is case-insensitive, so they resolve as `SPEC.md` and `CLAUDE.md`; left untouched.
 
 ## Deviations from spec
+
+- **Minimap drawn from ViZDoom's map geometry, not the automap buffer pixels.** The replay exposes sector lines and object positions (`sectors_info`, `objects_info`), the same data the automap draws. Drawing it ourselves gives the agent's exact recent path and the figure style (thin gray walls, accent path), and the same code draws the F8 path maps. Monsters are not drawn because dead monsters stay in the object list as corpses and would mislead.
 
 - **numpy 1.26 and gymnasium 0.29 instead of the newest.** Sample Factory 2.1.1 (the latest release) requires `numpy<2` and `gymnasium<1.0`. ViZDoom 1.3.2 accepts both. Pinned in `pyproject.toml`.
 
 ## Open issues
 
-None yet.
+- **ViZDoom demo path bug (worked around).** `new_episode(path)` and `replay_episode(path)` hang forever, with no error, when the path is longer than 112 characters or has a component starting with `-`. Every demo is recorded and replayed through a short path in `/tmp/doomscent_<uid>/` and then moved; `check_demo_path` raises on unusable paths. Found by bisecting path lengths (112 works, 113 hangs).

@@ -6,6 +6,8 @@ record, baseline), so the policy sees identical observations everywhere.
 
 from __future__ import annotations
 
+import os
+import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, ClassVar
@@ -67,6 +69,27 @@ def scenario_files(scenario: str) -> list[Path]:
         if key.strip().lower().replace("_", "") == "doomscenariopath":
             files.append(cfg_path.parent / val.strip())
     return files
+
+
+# ViZDoom passes demo paths to the engine as console arguments. On this build it hangs
+# (no error) when the path is longer than 112 characters, has a space, or has a component
+# starting with '-'. Demos are therefore recorded and replayed through short temp paths.
+MAX_DEMO_PATH = 100
+SHORT_DEMO_DIR = Path("/tmp") / f"doomscent_{os.getuid()}"
+
+
+def check_demo_path(path: str | Path) -> None:
+    """Raise instead of letting ViZDoom hang on a demo path it cannot handle."""
+    s = str(path)
+    bad = [part for part in Path(path).parts if part.startswith("-")]
+    if bad or " " in s or len(s) > MAX_DEMO_PATH:
+        raise ValueError(f"demo path unusable by ViZDoom (len {len(s)}, '-' or space): {s}")
+
+
+def short_demo_path(tag: str = "") -> Path:
+    """A fresh short path for ViZDoom to read or write a demo through."""
+    SHORT_DEMO_DIR.mkdir(parents=True, exist_ok=True)
+    return SHORT_DEMO_DIR / f"{os.getpid()}_{uuid.uuid4().hex[:12]}{tag}.lmp"
 
 
 def _plain(cfg: Mapping[str, Any] | DictConfig) -> dict[str, Any]:
@@ -194,6 +217,7 @@ class DoomEnv(gym.Env):
         self.game.set_seed(ep_seed)
         record = options.get("record_path")
         if record:
+            check_demo_path(record)
             Path(record).parent.mkdir(parents=True, exist_ok=True)
             self.game.new_episode(str(record))
         else:
@@ -282,6 +306,7 @@ class DoomEnv(gym.Env):
             "accuracy": hits / shots if shots > 0 else 0.0,
             "survival_time_s": ep["steps"] * self.frame_skip / 35.0,
             "episode_steps": float(ep["steps"]),
+            "episode_tics": float(self.game.get_episode_time()) if self.game else 0.0,
             "pickups": float(ep["pickups"]),
             "coverage": float(len(ep["cells"])),
             "enemy_visible_steps": float(ep["enemy_steps"]),
