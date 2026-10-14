@@ -6,7 +6,7 @@ Not written yet. v0 is in progress.
 
 ## Status
 
-- Current step: 6 (throughput test).
+- Current step: 7 (training smoke run and eval watcher).
 
 ## Gates
 
@@ -54,6 +54,15 @@ Not written yet. v0 is in progress.
 - Sidecars match episode lengths: sidecar step counts 70, 76, 111 equal the env's episode step counts; sidecar `episode_tics` 288, 314, 452 equal the replay's episode time exactly; replayed kills equal recorded kills (3, 0, 4). Frame count is episode tics minus the scenario's 10 start-up tics.
 - Test: `tests/test_recording.py::test_record_and_replay_match` (records, replays, decodes, checks lengths), plus filename and path-guard tests. Suite: `51 passed`.
 
+### Step 6: throughput test and config choice: DONE (2026-10-14)
+
+- Command: `uv run doomscent throughput --config configs/v0_defend_center.yaml --machine mac_m3pro --workers 2,4,6,8,10,12 --envs 4,8,16 --seconds 100`, then `--remeasure` (FPS = slope of env steps over wall time after a 40 s warm-up). Plus `--workers 3 --envs 8`, and 3 concurrent runs at 3 workers x 8 envs.
+- Single run, frames per second (env steps counting frame skip): every setting falls between 1.8K and 2.9K. Best 2,949 (4 workers x 4 envs); 3 x 8 gives 2,662; 12 x 16 drops to 1,843.
+- **Bottleneck: the CPU learner, not env sampling.** Sample Factory's end-of-run profile (6 x 8): learner `train` 91 s of 107 s, of which `forward_head` (the conv encoder) 68 s; inference worker `forward` 55 s. A batch of 2048 frames takes about 1.4 s through the conv encoder on this Mac whatever the torch thread count (1 to 10 threads: 1.6 s to 1.4 s). The torch macOS arm64 wheels have no oneDNN (`torch.backends.mkldnn.is_available() == False`); torch 2.5.1, 2.7.1, 2.9.1, 2.11.0, 2.13.0 were all benchmarked and none is materially faster, so torch stays at 2.14.1.
+- **3 concurrent runs (3 workers x 8 envs each): 1,639 + 1,522 + 1,522 = 4,683 FPS total**, 1.6x the best single run, because each run's single-core learner is the limit.
+- **Chosen config: 3 seeds trained at the same time, each with 3 rollout workers x 8 envs per worker** (`configs/v0_defend_center.yaml`).
+- Files: `runs/throughput/mac_m3pro/results.csv`, `concurrent.csv`, and every probe run folder with its `train.log`.
+
 ## Decisions
 
 - Package name is `doomscent` (not `doomrl`), per the project brief. W&B project name is `gradient-doomscent`.
@@ -71,6 +80,9 @@ Not written yet. v0 is in progress.
 - **Clip filenames** follow the spec's format, with the step zero-padded to at least 7 digits (`step_0000000`, `step_2500000`), which also matches the spec's `clips/train/step_0000000_*` pattern up to the run-name prefix. Plain clips have no suffix; the other versions end in `__minimap.mp4` and `__overlay.mp4`.
 - **Overlay version** is 1680x720: the 1280x720 game view plus a 400 px side panel (step, seed, kills, health, value meter, per-head action probabilities), so nothing covers the game.
 - **Clip seeds:** step-0 and per-checkpoint training clips use the first held-out seeds (900000000, 900000001, ...), so the same seed is available at every checkpoint for the montage.
+- **Env steps are frames:** Sample Factory counts env steps as agent steps times frame skip (4), so checkpoint intervals, the x-axes of every figure, and `train_for_env_steps` are in game frames. This matches how Sample Factory reports Doom FPS.
+- **`learner_threads` config option.** Sample Factory pins its learner to one torch thread; `doomscent/sf_integration.py` lets config raise it (applied inside the learner process). It did not help on this Mac (see step 6), so v0 uses 1.
+- **Wall-clock limit observer.** Sample Factory 2.1.1's `--train_for_seconds` never fires in the parallel runner (its `total_train_seconds` is never updated); `train.max_wall_seconds` uses our own observer instead. Only the throughput test uses it.
 - `spec.md` and `claude.md` were provided in lowercase. macOS is case-insensitive, so they resolve as `SPEC.md` and `CLAUDE.md`; left untouched.
 
 ## Deviations from spec

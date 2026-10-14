@@ -8,9 +8,11 @@ re-applies the per-head entropy patch in that process too.
 from __future__ import annotations
 
 import functools
+import os
 import time
 from typing import Any
 
+import sample_factory.algo.learning.learner_worker as _learner_worker
 import torch
 from omegaconf import OmegaConf
 from sample_factory.algo.runners.runner import AlgoObserver, Runner
@@ -31,6 +33,25 @@ def _tuple_summaries(self: TupleActionDistribution) -> dict[str, torch.Tensor]:
 
 
 TupleActionDistribution.summaries = _tuple_summaries  # type: ignore[attr-defined]
+
+
+# ----- learner threads ---------------------------------------------------------------------
+
+LEARNER_THREADS_ENV = "DOOMSCENT_LEARNER_THREADS"
+
+
+def _learner_torch_runtime(cfg: Any, max_num_threads: int | None = 1) -> None:
+    """Sample Factory pins the learner to one torch thread (fine on a GPU, a bottleneck on a
+    CPU-only Mac). The learner process imports this module when it unpickles our env
+    factory, before it initializes torch, so the thread count from config applies there."""
+    threads = int(os.environ.get(LEARNER_THREADS_ENV, "1"))
+    _original_init_torch_runtime(cfg, max_num_threads=threads)
+    print(f"[doomscent] learner torch threads: {torch.get_num_threads()}", flush=True)
+
+
+_original_init_torch_runtime = _learner_worker.init_torch_runtime
+if _original_init_torch_runtime is not _learner_torch_runtime:
+    _learner_worker.init_torch_runtime = _learner_torch_runtime
 
 
 # ----- env --------------------------------------------------------------------------------

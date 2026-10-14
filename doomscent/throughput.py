@@ -51,7 +51,13 @@ def remeasure(out_dir: Path, warmup: float) -> None:
     df = pd.read_csv(csv)
     rows = []
     for r in df.to_dict("records"):
+        lt = (
+            int(r.get("learner_threads", 1))
+            if r.get("learner_threads") == r.get("learner_threads")
+            else 1
+        )
         name = f"tp_{r['machine']}_w{int(r['workers']):02d}_e{int(r['envs_per_worker']):02d}"
+        name += f"_lt{lt:02d}" if lt != 1 else ""
         rows.append({**r, **measure(RunPaths.for_run(name, runs_root=out_dir), warmup)})
     pd.DataFrame(rows).to_csv(csv, index=False)
     print(pd.DataFrame(rows).sort_values("fps", ascending=False).to_string(index=False))
@@ -63,6 +69,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--machine", required=True)
     ap.add_argument("--workers", default="2,4,6,8,10")
     ap.add_argument("--envs", default="4,8,16")
+    ap.add_argument("--learner-threads", default="1")
     ap.add_argument("--seconds", type=int, default=100)
     ap.add_argument("--warmup", type=float, default=40.0)
     ap.add_argument("--remeasure", action="store_true", help="recompute from saved runs")
@@ -73,51 +80,63 @@ def main(argv: list[str] | None = None) -> None:
         return
     out_dir.mkdir(parents=True, exist_ok=True)
     results_csv = out_dir / "results.csv"
-    rows = pd.read_csv(results_csv).to_dict("records") if results_csv.exists() else []
-    done = {(r["workers"], r["envs_per_worker"]) for r in rows}
-    for w in [int(x) for x in args.workers.split(",")]:
-        for e in [int(x) for x in args.envs.split(",")]:
-            if (w, e) in done:
-                continue
-            name = f"tp_{args.machine}_w{w:02d}_e{e:02d}"
-            paths = RunPaths.for_run(name)
-            cmd = [
-                "uv",
-                "run",
-                "doomscent",
-                "train",
-                "--config",
-                args.config,
-                f"run_name={name}",
-                f"train.num_workers={w}",
-                f"train.num_envs_per_worker={e}",
-                "train.train_for_env_steps=10000000000",
-                "train.wandb.enabled=false",
-                f"train.max_wall_seconds={args.seconds}",
-            ]
-            print(f"[throughput] workers={w} envs={e}", flush=True)
-            t = time.time()
-            log = RUNS_ROOT / f"{name}.log"
-            with open(log, "w") as f:
-                proc = subprocess.run(cmd, cwd=REPO_ROOT, stdout=f, stderr=subprocess.STDOUT)
-            rc = proc.returncode
-            m = measure(paths, args.warmup)
-            row = {
-                "machine": args.machine,
-                "workers": w,
-                "envs_per_worker": e,
-                "total_envs": w * e,
-                **m,
-                "wall_s": time.time() - t,
-                "exit_code": rc,
-            }
-            rows.append(row)
-            print(f"[throughput] {row}", flush=True)
-            pd.DataFrame(rows).to_csv(results_csv, index=False)
-            dest = out_dir / name
-            if not dest.exists():
-                shutil.move(str(paths.root), dest)
-                shutil.move(str(log), dest / "train.log")
+    rows = []
+    if results_csv.exists():
+        prev = pd.read_csv(results_csv)
+        if "learner_threads" not in prev:
+            prev["learner_threads"] = 1
+        rows = prev.fillna({"learner_threads": 1}).to_dict("records")
+    done = {(r["workers"], r["envs_per_worker"], int(r.get("learner_threads", 1))) for r in rows}
+    grid = [
+        (w, e, lt)
+        for lt in [int(x) for x in args.learner_threads.split(",")]
+        for w in [int(x) for x in args.workers.split(",")]
+        for e in [int(x) for x in args.envs.split(",")]
+    ]
+    for w, e, lt in grid:
+        if (w, e, lt) in done:
+            continue
+        name = f"tp_{args.machine}_w{w:02d}_e{e:02d}" + (f"_lt{lt:02d}" if lt != 1 else "")
+        paths = RunPaths.for_run(name)
+        cmd = [
+            "uv",
+            "run",
+            "doomscent",
+            "train",
+            "--config",
+            args.config,
+            f"run_name={name}",
+            f"train.num_workers={w}",
+            f"train.num_envs_per_worker={e}",
+            "train.train_for_env_steps=10000000000",
+            "train.wandb.enabled=false",
+            f"train.max_wall_seconds={args.seconds}",
+            f"train.learner_threads={lt}",
+        ]
+        print(f"[throughput] workers={w} envs={e} learner_threads={lt}", flush=True)
+        t = time.time()
+        log = RUNS_ROOT / f"{name}.log"
+        with open(log, "w") as f:
+            proc = subprocess.run(cmd, cwd=REPO_ROOT, stdout=f, stderr=subprocess.STDOUT)
+        rc = proc.returncode
+        m = measure(paths, args.warmup)
+        row = {
+            "machine": args.machine,
+            "workers": w,
+            "envs_per_worker": e,
+            "learner_threads": lt,
+            "total_envs": w * e,
+            **m,
+            "wall_s": time.time() - t,
+            "exit_code": rc,
+        }
+        rows.append(row)
+        print(f"[throughput] {row}", flush=True)
+        pd.DataFrame(rows).to_csv(results_csv, index=False)
+        dest = out_dir / name
+        if not dest.exists():
+            shutil.move(str(paths.root), dest)
+            shutil.move(str(log), dest / "train.log")
     df = pd.DataFrame(rows).sort_values("fps_median", ascending=False)
     print(df.to_string(index=False))
 

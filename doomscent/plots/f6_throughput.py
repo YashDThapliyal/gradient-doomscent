@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from doomscent.plots.common import FigureSpec, direct_label, main_axes
+from doomscent.plots.common import FigureSpec, direct_label, main_axes, ref_line
 from doomscent.runs import RUNS_ROOT, RunPaths
 
 MACHINE_NAMES = {"mac_m3pro": "M3 Pro Mac (12 cores)"}
@@ -15,7 +15,14 @@ def load_throughput() -> pd.DataFrame:
     if not frames:
         raise FileNotFoundError("no throughput results; run `doomscent throughput`")
     df = pd.concat(frames, ignore_index=True)
+    if "learner_threads" in df:
+        df = df[df["learner_threads"].fillna(1) == 1]
     return df[df["exit_code"] == 0]
+
+
+def load_concurrent() -> pd.DataFrame | None:
+    files = sorted((RUNS_ROOT / "throughput").glob("*/concurrent.csv"))
+    return pd.concat([pd.read_csv(f) for f in files]) if files else None
 
 
 def build(paths: RunPaths) -> FigureSpec:
@@ -24,13 +31,22 @@ def build(paths: RunPaths) -> FigureSpec:
     chosen = (int(cfg.train.num_workers), int(cfg.train.num_envs_per_worker))
     best = df.loc[df["fps"].idxmax()]
     machines = ", ".join(MACHINE_NAMES.get(m, m) for m in df["machine"].unique())
-    title = (
-        f"Throughput peaks at {best.fps / 1000:.1f}K frames per second with "
-        f"{int(best.workers)} workers x {int(best.envs_per_worker)} envs"
-    )
+    conc = load_concurrent()
+    if conc is not None:
+        total = conc.groupby("concurrent_runs").fps.sum()
+        n_runs, tot = int(total.idxmax()), float(total.max())
+        title = (
+            f"One run tops out near {best.fps / 1000:.1f}K frames per second whatever the worker "
+            f"count; {n_runs} runs at once reach {tot / 1000:.1f}K"
+        )
+    else:
+        title = (
+            f"Throughput peaks at {best.fps / 1000:.1f}K frames per second with "
+            f"{int(best.workers)} workers x {int(best.envs_per_worker)} envs"
+        )
     sub = (
         f"{machines}  ·  Defend the Center, 128x72, frame skip 4, APPO batch 2048  ·  "
-        "100 s per setting, steady state after 40 s warm-up"
+        "100 s per setting, steady state after 40 s warm-up; the CPU learner is the bottleneck"
     )
 
     def draw(fig, theme, size):
@@ -53,7 +69,9 @@ def build(paths: RunPaths) -> FigureSpec:
                 color=theme.accent,
                 fontsize=10,
             )
-        ax.set_ylim(0, df.fps.max() / 1000 * 1.18)
+        if conc is not None:
+            ref_line(ax, tot / 1000, f"{n_runs} concurrent runs, total", theme)
+        ax.set_ylim(0, max(df.fps.max(), tot if conc is not None else 0) / 1000 * 1.18)
         ax.set_xticks(sorted(df.workers.unique()))
         ax.set_xlabel("rollout workers")
         ax.set_ylabel("thousand frames per second")

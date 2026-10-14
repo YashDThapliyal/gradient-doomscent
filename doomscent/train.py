@@ -112,6 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     cfg = load_config(args.config, args.overrides)
     paths = prepare_run(cfg)
+    os.environ["DOOMSCENT_LEARNER_THREADS"] = str(int(cfg.train.get("learner_threads", 1)))
     if cfg.train.wandb.enabled:
         os.environ.setdefault("WANDB_MODE", str(cfg.train.wandb.mode))
         os.environ.setdefault("WANDB_DIR", str(paths.root))
