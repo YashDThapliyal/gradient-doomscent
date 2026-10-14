@@ -6,9 +6,14 @@ Not written yet. v0 is in progress.
 
 ## Status
 
-- Current step: 9 (3 seeds training) with step 8's timelapse check on the smoke run in parallel.
-- Running (tmux): `train_v0_defend_center_s1`, `_s2`, `_s3` (20M env steps each, 3 workers x 8 envs; s1 also saves dense checkpoints every 100K for the timelapse) and their eval watchers `watch_v0_defend_center_s1`, `_s2`, `_s3`. Started 2026-10-14 15:19.
-- Logs: `runs/v0_defend_center_s<k>/logs/train.log`, `logs/eval_watcher.log`. W&B runs are offline in `runs/<run>/wandb/` (`wandb sync` uploads them).
+- **Paused 2026-10-14 15:54 at the user's request** (laptop closing). Nothing is running.
+- Where things stand:
+  - Seeds 1, 2, 3 (`v0_defend_center_s1`, `_s2`, `_s3`) were stopped cleanly with Ctrl-C at about 1.34M, 1.31M, and 1.27M of 20M env steps. Each saved a checkpoint on exit (`runs/<run>/sf/checkpoint_p0/checkpoint_*.pth`) and resumes from it.
+  - Eval watchers were stopped mid-re-evaluation after the console-overlay fix. Re-evaluation restarts for any checkpoint not yet in `metrics/eval.csv`, so nothing is lost.
+  - The smoke run (`v0_smoke`, finished training at 4.02M) is being re-evaluated so gate 7 can be re-confirmed with correct numbers; only step 0 is done (0.00 kills).
+- **To resume:** `scripts/resume_v0.sh` (starts tmux sessions `train_v0_defend_center_s<k>`, `watch_v0_defend_center_s<k>`, `watch_v0_smoke`).
+- Remaining time once resumed: about 5 to 6 hours of training (3 runs at about 0.9K to 1.3K FPS each, slowed by the eval watchers), then about 1.5 to 2 hours for step 10.
+- Logs: `runs/<run>/logs/train.log`, `logs/eval_watcher.log`.
 
 ## Gates
 
