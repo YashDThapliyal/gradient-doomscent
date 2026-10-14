@@ -40,14 +40,16 @@ class RenderResult:
     geometry: MapGeometry | None = None
 
 
-def _replay_game(scenario: str, width: int, height: int, buttons: Iterable[str]) -> vzd.DoomGame:
+def _replay_game(
+    scenario: str, width: int, height: int, buttons: Iterable[str], hud: bool = True
+) -> vzd.DoomGame:
     g = vzd.DoomGame()
     g.load_config(str(scenario_cfg_path(scenario)))
     g.set_window_visible(False)
     g.set_mode(vzd.Mode.PLAYER)
     g.set_screen_resolution(getattr(vzd.ScreenResolution, f"RES_{width}X{height}"))
     g.set_screen_format(vzd.ScreenFormat.RGB24)
-    g.set_render_hud(True)
+    g.set_render_hud(hud)
     g.set_render_crosshair(False)
     g.set_render_weapon(True)
     g.set_sectors_info_enabled(True)
@@ -157,7 +159,9 @@ def render_demo(
     names["overlay"] = f"{stem}__overlay.mp4"
     outputs = {v: out_dir / names[v] for v in variants}
     writers = {
-        v: VideoWriter(p, W + (PANEL_WIDTH if v == "overlay" else 0), H, rc["fps"], rc["crf"])
+        v: VideoWriter(
+            p, W + (PANEL_WIDTH if v == "overlay" else 0), H, rc["fps"], rc["crf"], rc.get("gop")
+        )
         for v, p in outputs.items()
     }
     steps = sidecar["steps"]
@@ -165,7 +169,7 @@ def render_demo(
     values = [s["value"] for s in steps if s.get("value") is not None]
     vrange = (min(values), max(values)) if values else (0.0, 1.0)
     buttons = sidecar["action_space"]["buttons"]
-    game = _replay_game(sidecar["scenario"], W, H, buttons)
+    game = _replay_game(sidecar["scenario"], W, H, buttons, bool(rc.get("hud", True)))
     trail: deque = deque(maxlen=int(rc["minimap_trail_tics"]))
     full_trail: list[tuple[float, float]] = []
     geom = None

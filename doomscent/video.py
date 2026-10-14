@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 from types import TracebackType
 
@@ -15,7 +16,15 @@ from doomscent.style import DARK, Theme, font, hex_to_rgb
 class VideoWriter:
     """Write RGB uint8 frames (H, W, 3) to an H.264 MP4."""
 
-    def __init__(self, path: str | Path, width: int, height: int, fps: int = 35, crf: int = 20):
+    def __init__(
+        self,
+        path: str | Path,
+        width: int,
+        height: int,
+        fps: int = 35,
+        crf: int = 20,
+        gop: int | None = None,
+    ):
         if width % 2 or height % 2:
             raise ValueError("H.264 needs even frame sizes")
         self.path = Path(path)
@@ -27,6 +36,8 @@ class VideoWriter:
         self.stream.height = height
         self.stream.pix_fmt = "yuv420p"
         self.stream.options = {"crf": str(crf), "preset": "medium"}
+        if gop:
+            self.stream.codec_context.gop_size = gop  # keyframe spacing, for fast seeking
         self.frames = 0
 
     def write(self, frame: np.ndarray) -> None:
@@ -70,6 +81,49 @@ def probe_video(path: str | Path) -> dict[str, float]:
             "fps": float(s.average_rate),
             "duration_s": n / float(s.average_rate),
         }
+
+
+def iter_frames(path: str | Path) -> Iterator[np.ndarray]:
+    """Decode a clip lazily, one RGB frame at a time."""
+    with av.open(str(path)) as c:
+        for f in c.decode(c.streams.video[0]):
+            yield f.to_ndarray(format="rgb24")
+
+
+class FrameReader:
+    """Random access to a clip's frames: sequential reads are cheap, jumps seek to a keyframe."""
+
+    def __init__(self, path: str | Path):
+        self.container = av.open(str(path))
+        self.stream = self.container.streams.video[0]
+        self.rate = float(self.stream.average_rate)
+        self.tb = float(self.stream.time_base)
+        self.n = self.stream.frames or int(probe_video(path)["frames"])
+        self._iter = None
+        self._pos = -1
+        self._frame: np.ndarray | None = None
+
+    def _index(self, frame: av.VideoFrame) -> int:
+        return round(frame.pts * self.tb * self.rate)
+
+    def get(self, i: int) -> np.ndarray:
+        i = max(0, min(int(i), self.n - 1))
+        if self._frame is not None and i == self._pos:
+            return self._frame
+        if self._iter is None or i < self._pos or i > self._pos + 70:
+            self.container.seek(int(i / self.rate / self.tb), stream=self.stream, backward=True)
+            self._iter = self.container.decode(self.stream)
+            self._pos = -1
+        for f in self._iter:
+            self._pos = self._index(f)
+            if self._pos >= i:
+                self._frame = f.to_ndarray(format="rgb24")
+                return self._frame
+        assert self._frame is not None, "empty clip"
+        return self._frame
+
+    def close(self) -> None:
+        self.container.close()
 
 
 def read_frames(path: str | Path) -> list[np.ndarray]:

@@ -55,6 +55,7 @@ detectors:
   pacifist:   {enabled: true, min_enemy_visible_steps: 50}
   suicide:    {enabled: true, rocket_weapon_slot: 5, window_steps: 8}
   reward_spike: {enabled: true, window: 100, min_history: 20, z: 4.0}
+  max_clips_per_detector: 3          # rendered clips per detector per eval; all hits go to flagged.csv
 
 train:
   sf_env_name: doomscent_v0
@@ -71,6 +72,7 @@ train:
   device: cpu
   checkpoint_every_env_steps: 500000
   dense_checkpoint_every_env_steps: 0   # 0 disables; 100000 for the timelapse seed
+  max_wall_seconds: null             # optional wall-clock budget (throughput test)
   sf_extra_args: []                   # any further Sample Factory flags, e.g. ["--num_epochs=1"]
   wandb:
     enabled: true
@@ -99,4 +101,22 @@ record:
   minimap_size: 300                  # inset square, pixels
   minimap_trail_tics: 350            # recent path length drawn on the minimap
 
-coverage_cell: 64                    # map units per coverage grid cell
+coverage_cell: 64
+
+sync:
+  rclone_remote: null                # e.g. "r2:gradient-doomscent"; null skips cloud sync                    # map units per coverage grid cell
+
+timelapse:
+  units_per_layer: 24                # real units sampled per layer, fixed across checkpoints
+  units_seed: 0
+  probe_size: 300                    # frames in the fixed probe set
+  probe_context: 8                   # preceding frames fed through the GRU before each probe
+  probe_low_health: 30
+  probe_low_ammo: 5
+  probe_close_px: 40                 # enemy bounding-box height (at 256x144) counted as close
+  probe_far_px: 20
+  duration_s: 60
+  fps: 60
+  fight_seed_offset: 0               # fight footage uses held-out seed eval_start + offset
+  saliency_blur_px: 9
+  umap: {n_neighbors: 15, min_dist: 0.1, seed: 0}

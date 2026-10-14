@@ -125,3 +125,15 @@ def write_run_metadata(cfg: DictConfig, paths: RunPaths) -> None:
         json.dumps({"training_seed": int(cfg.seed), **seeds}, indent=2)  # type: ignore[dict-item]
     )
     (paths.meta / "bots.json").write_text(json.dumps({"bots": None, "note": "single-player"}))
+    write_map_geometry(cfg, paths)
+
+
+def write_map_geometry(cfg: DictConfig, paths: RunPaths) -> Path:
+    """Cache the scenario's wall lines so map figures need only the run folder."""
+    from doomscent.minimap import scenario_geometry
+
+    out = paths.meta / "map_geometry.json"
+    if not out.exists():
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(scenario_geometry(cfg.env.scenario).to_dict()))
+    return out

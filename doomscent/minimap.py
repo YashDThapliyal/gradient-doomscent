@@ -115,3 +115,21 @@ def objects_from_state(state: vzd.GameState) -> tuple[tuple | None, list[tuple[f
         elif o.name in MONSTER_CLASSES:
             monsters.append((o.position_x, o.position_y))
     return player, monsters
+
+
+def scenario_geometry(scenario: str) -> MapGeometry:
+    """Map geometry of a scenario, read from a fresh game's sectors info."""
+    from doomscent.env import scenario_cfg_path
+
+    g = vzd.DoomGame()
+    g.load_config(str(scenario_cfg_path(scenario)))
+    g.set_window_visible(False)
+    g.set_mode(vzd.Mode.PLAYER)
+    g.set_screen_resolution(vzd.ScreenResolution.RES_160X120)
+    g.set_sectors_info_enabled(True)
+    g.init()
+    try:
+        g.new_episode()
+        return MapGeometry.from_state(g.get_state())
+    finally:
+        g.close()

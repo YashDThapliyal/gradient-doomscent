@@ -25,7 +25,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"usage: doomscent <command> [args]\ncommands: {names}", file=sys.stderr)
         raise SystemExit(2)
     module = importlib.import_module(COMMANDS[argv[0]])
-    module.main(argv[1:])
+    raise SystemExit(module.main(argv[1:]) or 0)
 
 
 if __name__ == "__main__":

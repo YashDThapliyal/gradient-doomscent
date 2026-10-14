@@ -44,11 +44,11 @@ LIGHT = Theme(
     subtext="#6B6B6B",
     grid="#E6E6E3",
     wall="#C9C9C4",
-    muted="#9A9A95",
+    muted="#85857F",
     muted2="#C4C4BF",
     accent="#E0461C",
     accent_soft="#F6C1AE",
-    second="#3A5A8C",
+    second="#2E62B8",
 )
 
 DARK = Theme(
@@ -61,9 +61,9 @@ DARK = Theme(
     wall="#5A5B60",
     muted="#7D7E83",
     muted2="#4A4B50",
-    accent="#FF5A2C",
+    accent="#EE5226",
     accent_soft="#6B2A18",
-    second="#7EA6E0",
+    second="#4F86DA",
 )
 
 THEMES = {"light": LIGHT, "dark": DARK}

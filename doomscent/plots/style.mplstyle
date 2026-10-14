@@ -1,0 +1,28 @@
+# Gradient Doomscent figure style. Colors are set per theme by doomscent.plots.common.
+font.family: Inter
+font.size: 11
+axes.titlesize: 15
+axes.titleweight: semibold
+axes.labelsize: 11
+axes.labelweight: regular
+xtick.labelsize: 10
+ytick.labelsize: 10
+axes.spines.top: False
+axes.spines.right: False
+axes.grid: True
+axes.grid.axis: y
+axes.axisbelow: True
+grid.linewidth: 0.6
+legend.frameon: False
+lines.linewidth: 2
+lines.solid_capstyle: round
+lines.dash_capstyle: round
+axes.prop_cycle: cycler('color', ['85857F'])
+xtick.major.size: 0
+ytick.major.size: 0
+xtick.major.pad: 6
+ytick.major.pad: 6
+figure.dpi: 200
+savefig.dpi: 400
+pdf.fonttype: 42
+ps.fonttype: 42
