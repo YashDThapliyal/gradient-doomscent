@@ -1,0 +1,5 @@
+base: v0_defend_center.yaml
+run_name: v0_defend_center_s1
+seed: 1
+train:
+  dense_checkpoint_every_env_steps: 100000
