@@ -189,7 +189,15 @@ def _cache_one(job: dict[str, Any]) -> str:
         }
     )
     rc = OmegaConf.to_container(cfg.record, resolve=True)
-    rc.update({"width": FOOTAGE_RES[0], "height": FOOTAGE_RES[1], "hud": False, "gop": 35})  # type: ignore[union-attr]
+    rc.update(
+        {
+            "width": FOOTAGE_RES[0],
+            "height": FOOTAGE_RES[1],
+            "hud": False,
+            "gop": 35,  # keyframe every second for fast seeking
+            "crf": int(cfg.record.get("routine_crf", 30)),  # shown at 924x520; keeps cache small
+        }
+    )  # type: ignore[union-attr]
     footage_dir = tl_dir(paths) / "cache" / "footage"
     rr = render_demo(demo, read_sidecar(sidecar), ["plain"], footage_dir, rc)  # type: ignore[arg-type]
     final = footage_dir / f"{ck.label}.mp4"
