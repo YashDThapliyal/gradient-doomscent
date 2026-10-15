@@ -44,6 +44,11 @@ def aim_shares(tracks: list[dict]) -> np.ndarray:
     return h / max(1, h.sum())
 
 
+def top_share(shares: np.ndarray, k: int = 3) -> float:
+    """Share of steps spent facing the k most-used 10-degree directions."""
+    return float(np.sort(shares)[-k:].sum())
+
+
 def directions_covered(shares: np.ndarray) -> float:
     """Fraction of 10-degree directions holding at least half a uniform share."""
     return float((shares >= 0.5 / N_BINS).mean())
@@ -64,9 +69,18 @@ def build(paths: RunPaths) -> FigureSpec:
     disp = max(
         float(np.hypot(t["x"] - t["x"][0], t["y"] - t["y"][0]).max()) for p in panels for t in p[2]
     )
-    c0, c1 = directions_covered(panels[0][3]), directions_covered(panels[1][3])
-    stay = "never leaves the center" if disp < 32 else f"moves up to {disp:.0f} units"
-    title = f"The agent {stay}; its aim covers {c1:.0%} of directions at its best vs {c0:.0%} early"
+    t0, t1 = top_share(panels[0][3]), top_share(panels[1][3])
+    can_move = bool({"move", "strafe"} & set(cfg.actions.heads))
+    if disp < 32:
+        where = "never leaves the center"
+    elif can_move:
+        where = f"moves up to {disp:.0f} units"
+    else:
+        where = f"stays put (knocked back at most {disp:.0f} units)"
+    title = (
+        f"The agent {where}; at its best it spends {t1:.0%} of steps facing its 3 favourite "
+        f"directions, vs {t0:.0%} early"
+    )
     sub = subtitle(
         paths,
         1,
@@ -79,7 +93,7 @@ def build(paths: RunPaths) -> FigureSpec:
         xmin, ymin, xmax, ymax = geom.bounds
         pad = 0.06 * max(xmax - xmin, ymax - ymin)
         for i, (step, name, tracks, shares) in enumerate(panels):
-            ax = fig.add_axes((left + i * w, bottom, w * 0.94, (top - bottom) * 0.86))
+            ax = fig.add_axes((left + i * w, bottom, w * 0.94, (top - bottom) * 0.80))
             ax.set_aspect("equal")
             ax.axis("off")
             for x1, y1, x2, y2 in geom.walls:
@@ -105,25 +119,27 @@ def build(paths: RunPaths) -> FigureSpec:
             ax.set_xlim(xmin - pad, xmax + pad)
             ax.set_ylim(ymin - pad, ymax + pad)
             lbl = f"{name}: step {fmt_steps(step)}"
-            ax.text(
-                0.0,
-                1.0,
-                lbl,
-                transform=ax.transAxes,
-                color=theme.text,
-                fontsize=11,
-                fontweight="semibold",
-                va="top",
-            )
-            cov = directions_covered(shares)
-            ax.text(
-                0.0,
-                0.93,
-                f"aim covers {cov:.0%} of directions",
-                transform=ax.transAxes,
-                color=theme.subtext,
-                fontsize=9.5,
-                va="top",
-            )
+            for text_, dy, size, color, weight in (
+                (lbl, 34, 11, theme.text, "semibold"),
+                (
+                    f"top 3 directions: {top_share(shares):.0%} of steps",
+                    16,
+                    9.5,
+                    theme.subtext,
+                    "regular",
+                ),
+            ):
+                ax.annotate(
+                    text_,
+                    (0.0, 1.0),
+                    xycoords="axes fraction",
+                    xytext=(0, dy),
+                    textcoords="offset points",
+                    color=color,
+                    fontsize=size,
+                    fontweight=weight,
+                    va="bottom",
+                    annotation_clip=False,
+                )
 
     return FigureSpec("F8", "path_maps", title, sub, draw, right_margin_in=0.4)
