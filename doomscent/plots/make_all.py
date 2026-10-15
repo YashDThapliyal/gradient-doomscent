@@ -47,7 +47,10 @@ def main(argv: list[str] | None = None) -> None:
             print(f"{fid}: FAILED {type(e).__name__}: {e}")
             traceback.print_exc()
     paths.figures.mkdir(parents=True, exist_ok=True)
-    (paths.figures / "INDEX.json").write_text(json.dumps(index, indent=2))
+    index_file = paths.figures / "INDEX.json"
+    merged = json.loads(index_file.read_text()) if index_file.exists() else {}
+    merged.update(index)  # `--only` refreshes some figures without dropping the others
+    index_file.write_text(json.dumps(dict(sorted(merged.items())), indent=2))
     if failed:
         raise SystemExit(f"figures failed: {', '.join(failed)}")
 
