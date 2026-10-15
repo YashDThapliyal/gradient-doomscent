@@ -20,8 +20,10 @@ from omegaconf import DictConfig, OmegaConf
 from doomscent.config import load_config
 from doomscent.runs import RunPaths, git_commit, write_run_metadata
 
-# Keys that may differ when resuming (bookkeeping only, never learning-relevant).
+# Keys that may differ when resuming: bookkeeping and evaluation settings that cannot change
+# what the agent learns. Reward, actions, env, seeds, and training settings never may.
 RESUME_SAFE_KEYS = ("train.wandb.mode",)
+RESUME_SAFE_PREFIXES = ("eval.", "record.", "detectors.", "sync.", "timelapse.", "baseline.")
 
 
 def sf_argv(cfg: DictConfig, paths: RunPaths) -> list[str]:
@@ -72,6 +74,10 @@ def checkpoint_interval(cfg: DictConfig) -> int:
     return dense or regular
 
 
+def is_resume_safe(key: str) -> bool:
+    return key in RESUME_SAFE_KEYS or key.startswith(RESUME_SAFE_PREFIXES)
+
+
 def config_diff(old: DictConfig, new: DictConfig) -> list[str]:
     a = OmegaConf.to_container(old, resolve=True)
     b = OmegaConf.to_container(new, resolve=True)
@@ -81,7 +87,11 @@ def config_diff(old: DictConfig, new: DictConfig) -> list[str]:
         if isinstance(x, dict) and isinstance(y, dict):
             for k in sorted(set(x) | set(y)):
                 walk(x.get(k), y.get(k), f"{prefix}.{k}" if prefix else str(k))
-        elif x != y and prefix not in RESUME_SAFE_KEYS:
+        elif (
+            x != y
+            and prefix not in RESUME_SAFE_KEYS
+            and not prefix.startswith(RESUME_SAFE_PREFIXES)
+        ):
             diffs.append(f"{prefix}: {x!r} -> {y!r}")
 
     walk(a, b, "")

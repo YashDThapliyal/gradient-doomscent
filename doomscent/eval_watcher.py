@@ -47,7 +47,7 @@ def done_marker(paths: RunPaths) -> Any:
 
 
 def record_clips(
-    paths: RunPaths, ck: Checkpoint, kind: str, n: int, variants: list[str]
+    paths: RunPaths, ck: Checkpoint, kind: str, n: int, variants: list[str], routine: bool = False
 ) -> list[dict]:
     from doomscent.env import make_env
     from doomscent.policy import load_policy
@@ -58,6 +58,9 @@ def record_clips(
     policy = load_policy(paths, ck.path, deterministic=bool(cfg.eval.deterministic))
     seeds = [int(cfg.seeds.eval_start) + i for i in range(n)]
     rc = OmegaConf.to_container(cfg.record, resolve=True)
+    if routine:  # per-checkpoint training clips: slimmer, re-renderable from the demos
+        rc["crf"] = int(cfg.record.get("routine_crf", rc["crf"]))  # type: ignore[index]
+        variants = list(cfg.eval.get("routine_clip_variants", variants))
     rows = record_and_render(
         env,
         policy,
@@ -131,7 +134,7 @@ def process_checkpoint(paths: RunPaths, ck: Checkpoint) -> None:
         f"flagged {summary['flagged_episodes']}, {time.time() - t:.0f}s",
     )
     n_train = int(e.step0_clip_episodes) if ck.step == 0 else int(e.train_clip_episodes)
-    record_clips(paths, ck, "train", n_train, ["plain", "minimap"])
+    record_clips(paths, ck, "train", n_train, ["plain", "minimap"], routine=True)
     if update_best(paths, ck, summary):
         record_clips(paths, ck, "best", int(e.best_clip_episodes), ["plain", "minimap", "overlay"])
         log(paths, f"new best: {ck.label} with {summary['kills']:.2f} kills")

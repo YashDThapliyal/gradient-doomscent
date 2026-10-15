@@ -90,6 +90,7 @@ eval:
   multi_kill_window_steps: 35        # kills within this many agent steps (~4 s) form a streak
   multi_kill_min: 3
   max_multi_kill_clips: 2            # render only the strongest streak episodes
+  routine_clip_variants: [plain]     # per-checkpoint clips; best and final also get minimap and overlay
   train_clip_episodes: 2
   best_clip_episodes: 3
   final_clip_episodes: 5
@@ -101,6 +102,7 @@ record:
   height: 720
   fps: 35
   crf: 20
+  routine_crf: 30                    # per-checkpoint eval and train clips (disk); best, final, flagged use crf
   minimap_size: 300                  # inset square, pixels
   minimap_trail_tics: 350            # recent path length drawn on the minimap
 

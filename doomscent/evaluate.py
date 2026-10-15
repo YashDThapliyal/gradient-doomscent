@@ -250,6 +250,9 @@ def evaluate(
     streaks = streaks.sort_values(["multi_kill_max", "kills"], ascending=False)
     clip_eps |= set(streaks["episode"].head(int(e.get("max_multi_kill_clips", 2))))
     render_jobs = []
+    # Routine per-checkpoint clips are slimmer (disk); demos keep everything re-renderable.
+    routine_variants = list(e.get("routine_clip_variants", ["plain", "minimap"]))
+    routine_rc = {**rc, "crf": int(cfg.record.get("routine_crf", rc["crf"]))}  # type: ignore[index]
     if render:
         for ep in sorted(clip_eps):
             r = df[df.episode == ep].iloc[0]
@@ -257,9 +260,9 @@ def evaluate(
                 {
                     "demo": r.demo,
                     "sidecar": r.sidecar,
-                    "variants": ["plain", "minimap"],
+                    "variants": routine_variants,
                     "out_dir": str(out_dir),
-                    "rc": rc,
+                    "rc": routine_rc,
                 }
             )
         cap = int(cfg.detectors.get("max_clips_per_detector", 3))

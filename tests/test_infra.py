@@ -74,3 +74,9 @@ def test_list_checkpoints_by_boundary(tmp_path):
     cks = list_checkpoints(paths)
     assert [(c.step, c.regular) for c in cks] == [(0, True), (100_000, False), (500_000, True)]
     assert cks[2].env_steps == 516096 and cks[2].label == "step_0500000"
+
+
+def test_resume_allows_eval_changes_but_not_learning_changes():
+    a = OmegaConf.create({"record": {"crf": 20}, "eval": {"x": 1}, "train": {"gamma": 0.99}})
+    b = OmegaConf.create({"record": {"crf": 30}, "eval": {"x": 2}, "train": {"gamma": 0.995}})
+    assert config_diff(a, b) == ["train.gamma: 0.99 -> 0.995"]
