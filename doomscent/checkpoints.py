@@ -82,7 +82,20 @@ def best_pointer(paths: RunPaths) -> Path:
     return paths.root / "checkpoints_best.json"
 
 
+def wait_until_settled(paths: RunPaths, timeout_s: float = 4 * SETTLE_SECONDS) -> None:
+    """Give checkpoint files that are still being written (or just copied) time to settle."""
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        files = list(paths.milestone_dir.glob("checkpoint_*.pth"))
+        if all(is_complete(f) for f in files):
+            return
+        time.sleep(2)
+
+
 def resolve_checkpoint(paths: RunPaths, spec: str) -> Checkpoint:
+    """A checkpoint by selector; waits for in-flight files so `latest` is really the latest."""
+    if paths.milestone_dir.exists():
+        wait_until_settled(paths)
     cks = list_checkpoints(paths)
     if not cks:
         raise FileNotFoundError(f"no checkpoints in {paths.milestone_dir}")
