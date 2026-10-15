@@ -7,7 +7,7 @@ Not written yet. v0 is in progress.
 ## Status
 
 - Resumed 2026-10-14 17:28. At 17:35 the 3 concurrent runs plus 4 eval watchers pushed the load average to 299 on 12 cores (81 Doom engine processes) and made the Mac nearly unusable, so **seeds now train one at a time**: `scripts/queue_v0.sh` (tmux `v0_queue`) waits for each run's `TRAINING_DONE.json`, then starts the next seed and its eval watcher, and re-evaluates the smoke run at the end. Seeds 2 and 3 were stopped with Ctrl-C (checkpoints at 1.48M and 1.40M) and resume from there.
-- Running now: `train_v0_defend_center_s1` (about 2.5K FPS alone), `watch_v0_defend_center_s1`, `v0_queue`. All at low CPU priority.
+- Running now: `train_v0_defend_center_s1` (about 2.5K FPS alone), `watch_v0_defend_center_s1`, `v0_queue`, `caffeinate` (keeps the Mac awake), `dashboard` (http://127.0.0.1:8765).
 - Estimate: about 2 hours per seed, so about 6.5 hours for all three, then about 1.5 to 2 hours for step 10.
 - Logs: `runs/<run>/logs/train.log`, `logs/eval_watcher.log`, `runs/queue_v0.log`.
 
@@ -120,6 +120,8 @@ Not written yet. v0 is in progress.
 - **numpy 1.26 and gymnasium 0.29 instead of the newest.** Sample Factory 2.1.1 (the latest release) requires `numpy<2` and `gymnasium<1.0`. ViZDoom 1.3.2 accepts both. Pinned in `pyproject.toml`.
 
 ## Open issues
+
+- **Mac sleep stops Sample Factory (handled 2026-10-14 20:20).** The Mac slept from about 19:15 to 20:05; on waking, Sample Factory found no heartbeats for 3,000 s and stopped seed 1 cleanly at 14.4M (checkpoint saved, nothing lost). The queue was waiting for `TRAINING_DONE.json`, so nothing ran until it was noticed. Fixes: `caffeinate -dims` in tmux while runs are going, and `scripts/queue_v0.sh` now resumes any run whose training session ends before it finishes. Seed 1 resumed at 14,417,920 env steps.
 
 - **ViZDoom console overlay on recorded episodes (fixed 2026-10-14 15:45).** From the second recorded episode on a game instance, ViZDoom drew its console log over the top of the screen, so the policy saw a corrupted view. Every evaluation episode after each eval worker's first was affected; the smoke run's 3.5M checkpoint scored 1.56 held-out kills under the bug and 5.35 when played without recording. Found because held-out kills fell while training kills rose; per-episode results showed each worker's first episode scoring 5 to 7 kills and the rest 1 to 2. `render_messages`, `console_enabled`, and `+con_notifytime 0` do not help. Fix: a fresh game for every recorded episode (`doomscent/env.py`), with a regression test (`test_recorded_episodes_show_the_policy_the_same_screen`, which fails without the fix). Training never records and is unaffected; the baseline does not record and is unaffected; random-agent clips are unaffected (the random policy ignores the screen). All earlier evaluation outputs were moved, not deleted, to `runs/<run>/_invalid_eval_console_bug/`, and every checkpoint is being re-evaluated.
 
