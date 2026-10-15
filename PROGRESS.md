@@ -30,7 +30,7 @@ Gate: 1.5 x 4.42 = 6.63 kills per episode over 100 held-out episodes. "Selection
 
 **Known issues** (details under Open issues):
 - No cloud sync (no bucket on this machine); W&B runs are offline in `runs/<run>/wandb/` and can be uploaded with `wandb sync`.
-- `runs/` is about 28 GB on a nearly full disk; routine per-checkpoint clips were slimmed partway through (plain only, CRF 30) and early rolling resume checkpoints were pruned. Every demo, sidecar, and milestone checkpoint is kept, so any clip can be re-rendered.
+- `runs/` is about 12 GB after its 21 GB of videos were deleted on 2026-10-15 (see Deviations). Every demo, sidecar, and milestone checkpoint is kept, so any clip can be re-rendered with `doomscent record`; the curated videos live in `assets/`.
 - Defend the Center cannot show close escapes (low health only happens after the ammo is gone), so the highlight reel has streaks only; `kd_ratio` is always kills/1.
 - Several engine and framework quirks were found and worked around (ViZDoom demo paths over 112 characters hang; ViZDoom draws its console over the second and later recorded episodes of a game; Sample Factory's `--train_for_seconds` never fires; Sample Factory pins its learner to one thread and its W&B init breaks with wandb 0.30; Mac sleep stops Sample Factory). Each is recorded with its fix below.
 
@@ -174,6 +174,8 @@ A read-only review agent went through `doomscent/`. Fixed (commit a7441e2, tests
 - **Minimap drawn from ViZDoom's map geometry, not the automap buffer pixels.** The replay exposes sector lines and object positions (`sectors_info`, `objects_info`), the same data the automap draws. Drawing it ourselves gives the agent's exact recent path and the figure style (thin gray walls, accent path), and the same code draws the F8 path maps. Monsters are not drawn because dead monsters stay in the object list as corpses and would mislead.
 
 - **numpy 1.26 and gymnasium 0.29 instead of the newest.** Sample Factory 2.1.1 (the latest release) requires `numpy<2` and `gymnasium<1.0`. ViZDoom 1.3.2 accepts both. Pinned in `pyproject.toml`.
+
+- **Run-folder videos deleted; routine clips off for future runs (2026-10-15, user's call).** The spec renders clips at every checkpoint and evaluation and says to keep them all. The user decided only a start clip and a best clip are worth keeping. All 2,270 MP4s in `runs/` (about 21 GB) were deleted with their approval; free disk went from 2.6 GB to 25 GB. Kept: every demo (`.lmp`) and sidecar (14,213 each, so any clip re-renders with `doomscent record`), every checkpoint, all metrics, and the curated videos in `assets/`. New config key `eval.render_routine_clips` (false in `configs/v0_defend_center.yaml`): the watcher renders clips only for step 0 and, when training ends, the overall best checkpoint; per-checkpoint eval, train, flagged, and final clips are skipped. Missing key means the old behavior, so v0 run configs still describe what they did.
 
 ## Open issues
 

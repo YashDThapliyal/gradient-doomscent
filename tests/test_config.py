@@ -37,3 +37,11 @@ def test_save_roundtrip(tmp_path):
     out = tmp_path / "run" / "config.yaml"
     save_config(cfg, out)
     assert OmegaConf.load(out).y == 1
+
+
+def test_routine_clips_switch() -> None:
+    from doomscent.eval_watcher import routine_clips
+
+    assert routine_clips(OmegaConf.create({"eval": {}}))  # older run configs: every clip
+    assert not routine_clips(OmegaConf.create({"eval": {"render_routine_clips": False}}))
+    assert not routine_clips(load_config("configs/v0_defend_center.yaml"))

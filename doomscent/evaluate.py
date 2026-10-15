@@ -259,7 +259,7 @@ def evaluate(
     # Routine per-checkpoint clips are slimmer (disk); demos keep everything re-renderable.
     routine_variants = list(e.get("routine_clip_variants", ["plain", "minimap"]))
     routine_rc = {**rc, "crf": int(cfg.record.get("routine_crf", rc["crf"]))}  # type: ignore[index]
-    if render:
+    if render and bool(e.get("render_routine_clips", True)):
         for ep in sorted(clip_eps):
             r = df[df.episode == ep].iloc[0]
             render_jobs.append(

@@ -81,6 +81,14 @@ def record_clips(
     return rows
 
 
+def routine_clips(cfg: Any) -> bool:
+    """Whether every checkpoint gets rendered clips, or only step 0 and the final best.
+
+    Demos are always kept, so any skipped clip can be rendered later with `record`.
+    """
+    return bool(cfg.eval.get("render_routine_clips", True))
+
+
 def update_best(paths: RunPaths, ck: Checkpoint, summary: dict) -> bool:
     """Point `best` at the argmax of held-out kills over every evaluated checkpoint.
 
@@ -145,11 +153,33 @@ def process_checkpoint(paths: RunPaths, ck: Checkpoint) -> None:
         f"[{summary['kills_ci_lo']:.2f}, {summary['kills_ci_hi']:.2f}], "
         f"flagged {summary['flagged_episodes']}, {time.time() - t:.0f}s",
     )
-    n_train = int(e.step0_clip_episodes) if ck.step == 0 else int(e.train_clip_episodes)
-    record_clips(paths, ck, "train", n_train, ["plain", "minimap"], routine=True)
+    every = routine_clips(cfg)
+    if ck.step == 0 or every:
+        n_train = int(e.step0_clip_episodes) if ck.step == 0 else int(e.train_clip_episodes)
+        record_clips(paths, ck, "train", n_train, ["plain", "minimap"], routine=True)
     if update_best(paths, ck, summary):
-        record_clips(paths, ck, "best", int(e.best_clip_episodes), ["plain", "minimap", "overlay"])
+        if every:  # otherwise best clips are rendered once, when training ends
+            record_clips(
+                paths, ck, "best", int(e.best_clip_episodes), ["plain", "minimap", "overlay"]
+            )
         log(paths, f"new best: {ck.label} with {summary['kills']:.2f} kills")
+    sync(paths)
+
+
+def record_end_clips(paths: RunPaths) -> None:
+    """Final-checkpoint clips, or with routine clips off, clips of the overall best."""
+    cfg = paths.load_config()
+    variants = ["plain", "minimap", "overlay"]
+    if routine_clips(cfg):
+        kind, ck, n = "final", list_checkpoints(paths)[-1], int(cfg.eval.final_clip_episodes)
+    else:
+        step = json.loads(best_pointer(paths).read_text())["step"]
+        by_step = {c.step: c for c in list_checkpoints(paths)}
+        kind, ck, n = "best", by_step[step], int(cfg.eval.best_clip_episodes)
+    if any((paths.clips / kind).glob(f"*__step_{ck.step:07d}__*.mp4")):
+        return
+    record_clips(paths, ck, kind, n, variants)
+    log(paths, f"{kind} clips recorded from {ck.label}")
     sync(paths)
 
 
@@ -176,13 +206,7 @@ def run_watcher(paths: RunPaths, poll: float, once: bool = False) -> None:
             time.sleep(SETTLE_SECONDS)  # a checkpoint is still being written or just adopted
             continue
         if training_done and not todo:
-            final_dir = paths.clips / "final"
-            final = list_checkpoints(paths)[-1]
-            if not any(final_dir.glob(f"*__step_{final.step:07d}__*.mp4")):
-                n = int(paths.load_config().eval.final_clip_episodes)
-                record_clips(paths, final, "final", n, ["plain", "minimap", "overlay"])
-                log(paths, f"final clips recorded from {final.label}")
-                sync(paths)
+            record_end_clips(paths)
             write_train_csv(paths)
             log(paths, "training finished and every checkpoint is evaluated; exiting")
             return

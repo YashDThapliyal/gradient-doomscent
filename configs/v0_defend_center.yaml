@@ -90,6 +90,7 @@ eval:
   multi_kill_window_steps: 35        # kills within this many agent steps (~4 s) form a streak
   multi_kill_min: 3
   max_multi_kill_clips: 2            # render only the strongest streak episodes
+  render_routine_clips: false        # clips only at step 0 and the final best; every demo is kept
   routine_clip_variants: [plain]     # per-checkpoint clips; best and final also get minimap and overlay
   train_clip_episodes: 2
   best_clip_episodes: 3
