@@ -25,12 +25,25 @@ def build(paths: RunPaths) -> FigureSpec:
     def b(col: str, fmt: str) -> str:
         return format(bdf[col].mean(), fmt) if bdf is not None and col in bdf else "n/a"
 
-    rows = [
+    conf_file = paths.metrics / "confirm" / f"step_{int(step):07d}.json"
+    conf = json.loads(conf_file.read_text()) if conf_file.exists() else None
+    head_kills = conf["kills"] if conf else r.kills
+    rows = []
+    if conf:
+        rows.append(
+            (
+                "kills, fresh held-out games",
+                f"{conf['kills']:.2f}",
+                f"[{conf['kills_ci_lo']:.2f}, {conf['kills_ci_hi']:.2f}]",
+                b("kills", ".2f"),
+            )
+        )
+    rows += [
         (
-            "kills per episode",
+            "kills, games used to pick best" if conf else "kills per episode",
             f"{r.kills:.2f}",
             f"[{r.kills_ci_lo:.2f}, {r.kills_ci_hi:.2f}]",
-            b("kills", ".2f"),
+            "" if conf else b("kills", ".2f"),
         ),
         ("deaths per episode", f"{r.deaths:.2f}", "", b("deaths", ".2f")),
         (
@@ -44,14 +57,18 @@ def build(paths: RunPaths) -> FigureSpec:
         ("damage dealt (hp)", f"{r.damage_dealt:.0f}", "", b("damage_dealt", ".0f")),
         ("damage taken (hp)", f"{r.damage_taken:.0f}", "", b("damage_taken", ".0f")),
     ]
-    ratio = r.kills / base["kills_mean"] if base else float("nan")
+    ratio = head_kills / base["kills_mean"] if base else float("nan")
+    fresh = " on fresh held-out games" if conf else ""
     title = (
-        f"The best checkpoint averages {r.kills:.1f} kills per episode, "
+        f"The best checkpoint averages {head_kills:.1f} kills per episode{fresh}, "
         f"{ratio:.1f}x the scripted baseline"
     )
-    sub = subtitle(
-        paths, 1, f"best: step {fmt_steps(step)}; 100 held-out episodes; 95% bootstrap interval"
+    note = (
+        "best picked on held-out seeds 0 to 99, re-scored on 100 unseen seeds"
+        if conf
+        else "100 held-out episodes"
     )
+    sub = subtitle(paths, 1, f"best: step {fmt_steps(step)}; {note}; 95% bootstrap interval")
 
     def draw(fig, theme, size):
         left, bottom, right, top = fig.rect
