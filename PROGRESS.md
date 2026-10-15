@@ -6,10 +6,8 @@ Not written yet. v0 is in progress.
 
 ## Status
 
-- Resumed 2026-10-14 17:28. At 17:35 the 3 concurrent runs plus 4 eval watchers pushed the load average to 299 on 12 cores (81 Doom engine processes) and made the Mac nearly unusable, so **seeds now train one at a time**: `scripts/queue_v0.sh` (tmux `v0_queue`) waits for each run's `TRAINING_DONE.json`, then starts the next seed and its eval watcher, and re-evaluates the smoke run at the end. Seeds 2 and 3 were stopped with Ctrl-C (checkpoints at 1.48M and 1.40M) and resume from there.
-- Running now: `train_v0_defend_center_s1` (about 2.5K FPS alone), `watch_v0_defend_center_s1`, `v0_queue`, `caffeinate` (keeps the Mac awake), `dashboard` (http://127.0.0.1:8765).
-- Estimate: about 2 hours per seed, so about 6.5 hours for all three, then about 1.5 to 2 hours for step 10.
-- Logs: `runs/<run>/logs/train.log`, `logs/eval_watcher.log`, `runs/queue_v0.log`.
+- Overnight run (user away until about 8:45). Seed 1 finished training at 20.0M (2026-10-15 01:1x). Seeds 2 and 3 train concurrently (`scripts/queue_v0_parallel.sh`, tmux `v0_queue`), each resuming automatically after any stop. When all three are trained and their eval watchers have exited, `scripts/finalize_v0.sh` runs: smoke re-evaluation, unbiased confirmation of each seed's best, figures, montages, highlight reels, side-by-side videos, the seed-1 timelapse, and the fresh-clone reproduction check (`runs/fresh_clone_check.log`). Progress: `runs/queue_v0.log`; live view: http://127.0.0.1:8765.
+- tmux: `train_v0_defend_center_s2`, `_s3`, `watch_v0_defend_center_s1..3`, `v0_queue`, `caffeinate`, `dashboard`.
 
 ## Gates
 
@@ -85,6 +83,16 @@ Not written yet. v0 is in progress.
 - `timelapse --run v0_defend_center_s1 --subdir timelapse_test --max-checkpoints 6 --duration 8`: brain-data cache for 6 checkpoints (0 to 7.3M), then `timelapse_16x9.mp4` (1920x1080, 480 frames at 60 fps), `timelapse_mobile.mp4` (1080x1350), `brain_only.mp4`, `attention_before_after.mp4` (245 frames), `mind_map.mp4` (300 frames), in `runs/v0_defend_center_s1/timelapse_test/`. Frames viewed: brain with weight-change edges and node activity, progressive curve with gate and baseline, decision bars, saliency on the footage, step and score tag; the mind map separates the probe frames by turn direction. The smoke run had no valid evaluations at this point (quarantined), so the timelapse was checked on a subset of seed 1 instead; the test folder is separate from the real `timelapse/`.
 - The brain's functional forward pass matches Sample Factory's model outputs to 1e-4 (`tests/test_brain.py`).
 
+### Independent code review (2026-10-15 01:00): findings fixed
+
+A read-only review agent went through `doomscent/`. Fixed (commit a7441e2, tests added where testable; 70 tests pass):
+- Sample Factory writes milestone checkpoints in place, so the eval watcher could read a half-written file, crash, and stop evaluating with no restart. `list_checkpoints` now skips files younger than 20 s or not a complete zip; the watcher logs a failed evaluation and retries it on the next poll.
+- `best` was updated incrementally; it is now the argmax over `eval.csv` (written atomically), so a re-evaluation can never leave it stale. Re-evaluating a checkpoint replaced its `eval.csv` row but appended duplicate `flagged.csv` rows; flags are now replaced per checkpoint too.
+- Winner's curse: `best` is chosen on the same 100 held-out seeds it is reported on. `doomscent evaluate --confirm-offset 1000` re-scores the best checkpoint on 100 disjoint held-out seeds (900,001,000 onward); F5 and the final report use that unbiased number, with the selection-seed number beside it.
+- Timelapse attention overlays renormalized every frame to full intensity, so a near-random network looked as attentive as a trained one. Saliency now uses one scale across all checkpoints (step 0's gradients turned out about 70x weaker than the trained network's). The timelapse tag showed an interpolated score no evaluated network produced; it now shows the on-screen checkpoint and its latest real held-out score.
+- Smaller: F4 counted detector hits as flagged episodes; pickups depended on reward weights; `record` named clips by raw env steps instead of the checkpoint boundary; the timelapse assumed `normalize_returns`; the mind map hard-coded the turn-head size; the resume-safe config keys were narrowed so `eval.episodes`, `eval.deterministic`, and detector thresholds can never change mid-run.
+- Not changed, noted: training accuracy (mean of per-episode ratios) and eval accuracy (pooled hits / shots) use different aggregations; figures compare like with like. `kd_ratio` is always kills/1 in this scenario (one death per episode).
+
 ## Decisions
 
 - Package name is `doomscent` (not `doomrl`), per the project brief. W&B project name is `gradient-doomscent`.
@@ -107,6 +115,7 @@ Not written yet. v0 is in progress.
 - **Wall-clock limit observer.** Sample Factory 2.1.1's `--train_for_seconds` never fires in the parallel runner (its `total_train_seconds` is never updated); `train.max_wall_seconds` uses our own observer instead. Only the throughput test uses it.
 - **Detector tuning (before the main runs).** On the smoke run's 500K evaluation, spinning fired on 45 of 100 episodes, wasted fire on 30, reward spike on 6. Tightened: spinning needs 95% of steps turning and 95% one way; wasted fire needs at least 22 shots at no more than 5% accuracy; the reward spike compares an episode with the other episodes of the same checkpoint (comparing with the previous checkpoint flagged ordinary learning as an exploit). Re-running the detectors on those same 100 sidecars: wasted fire 1, reward spike 0, spinning still 45. In Defend the Center the agent cannot move, so a checkpoint that spins does so in every episode; that is a policy-wide strategy, and no threshold makes it rare. Rendered flagged clips are capped at 3 per detector per evaluation; every hit is still logged in `flagged.csv`.
 - **Clip budget per evaluation:** first 3 episodes, the best-scoring one, and the 2 strongest multi-kill streaks (the streak rule matched 25 of 100 episodes and made each evaluation take about 5 minutes). Eval watchers use 2 processes each so three of them fit beside three trainings.
+- **Highlight reels contain only streaks in Defend the Center.** A close escape (health at or below 30, then still fighting) never happens: in 99 of 100 held-out games the agent drops below 40 health only after its ammo is gone, and never kills again after that. The detector exists and would find escapes in scenarios with pickups or movement.
 - **Eval-only settings may change when a run resumes.** `train.py` refuses to resume a run whose config changed, except under `eval.`, `record.`, `detectors.`, `sync.`, `timelapse.`, `baseline.`, which cannot affect learning. Used once: slimmer routine clips after the disk filled.
 - **Seeds train one at a time, not concurrently.** The throughput test favored 3 concurrent runs (4.7K vs 2.9K FPS total), but with eval watchers on top the Mac was overloaded (load 299) while the user was working on it. One run at a time gets about 2.5K FPS, so total wall time is nearly the same. Each run's config is unchanged (still 3 workers x 8 envs).
 - **Training length: 20M env steps per seed.** The smoke run was still improving at 4M (held-out 4.04 at 2M, training kills 5.7 at 3.5M); 20M is affordable on this machine (about 4 hours with 3 concurrent runs).
