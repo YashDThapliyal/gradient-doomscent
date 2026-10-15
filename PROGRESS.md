@@ -2,12 +2,41 @@
 
 ## Final report
 
-Not written yet. v0 is in progress.
+**v0 ("It learns to fight") is done. All three gates in v0's "Done when" list pass.**
+
+An APPO agent (Sample Factory 2.1.1, CNN plus GRU, CPU only on an M3 Pro Mac) learned Defend the Center from 128x72 pixels in 20M env steps per seed. It beats the scripted spin-and-shoot baseline (4.42 kills) by about 2.4x on held-out seeds, in all 3 of 3 seeds:
+
+| Seed | Best checkpoint | Held-out kills, selection seeds (95% CI) | Held-out kills, fresh seeds (95% CI) | Accuracy | First checkpoint past the gate |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 20M | 10.68 [10.43, 10.93] | **10.48 [10.21, 10.74]** | 41% | 5M |
+| 2 | 19M | 10.36 [10.10, 10.63] | **10.49 [10.21, 10.77]** | 40% | 6.5M |
+| 3 | 18M | 10.46 [10.21, 10.71] | **10.56 [10.26, 10.84]** | 40% | 4.5M |
+
+Gate: 1.5 x 4.42 = 6.63 kills per episode over 100 held-out episodes. "Selection seeds" are held-out seeds 900,000,000 to 900,000,099, on which `best` was chosen; "fresh seeds" are 100 different held-out seeds (900,001,000 onward) used only to re-score the chosen checkpoint, so they are free of selection bias. Deterministic policy throughout.
+
+**What the agent learned.** It starts by never firing (seeds 1 and 3) or, by chance, already spinning and firing (seed 2). In all three seeds it then rediscovers the scripted spin-and-shoot strategy (0.5M to 1.5M steps: turn at full speed every step, fire every step, about 2.6 kills), then breaks out of it by learning to stop turning when a target is centered and hold fire otherwise: accuracy rises from 10% to 41%, kills from 2.6 to 10.7, from the same 26 bullets. Every game still ends in death once the ammo runs out (no pickups in this scenario), and the value estimate visibly drops as ammo runs low. The brain timelapse shows the vision layers settling early and the memory-to-action connections changing last; the attention overlay shows the trained network looking at the monsters it is about to shoot, while the 100K network barely attends to anything (its gradients are about 70x weaker).
+
+**Done when:**
+- [x] Best checkpoint averages at least 1.5x the scripted baseline's kills over 100 held-out-seed episodes in at least 2 of 3 seeds: 3 of 3 (10.48, 10.49, 10.56 on fresh seeds; gate 6.63).
+- [x] One command each regenerates the montage, the timelapse, and all v0 figures from the run folder: `doomscent montage --run <run> --ckpts auto`, `doomscent timelapse --run v0_defend_center_s1`, `doomscent figures --run <run>`; all three were run by `scripts/finalize_v0.sh` (log: `runs/queue_v0.log`).
+- [x] A fresh clone reproduces a run from its config with nothing beyond the repo and its dependencies: `scripts/check_fresh_clone.sh` cloned commit 07a89d3 into `/tmp`, ran `uv sync`, 60 tests passed, trained 516K steps from `configs/v0_defend_center_s1.yaml`, and evaluated the trained 500K checkpoint (5.05 kills on 20 held-out episodes). Log: `runs/fresh_clone_check.log`.
+
+**Assets** (curated copies in `assets/`, listed in `assets/INDEX.md`; videos are not committed):
+- Figures F1 to F6 and F8, 3 sizes x 2 themes x PNG and PDF: `assets/figures/` (also `runs/<run>/figures/` for every seed).
+- Step-0 clips, before and after, best-checkpoint clips (plain, minimap, overlay), 2x2 progress montage, highlight reel, side-by-side: `assets/clips/`.
+- Training timelapse (1920x1080 60 fps, 1080x1350 mobile, brain-only, attention before/after, mind map) from 201 checkpoints: `assets/timelapse/`.
+- Weird behaviors with clips: `WEIRD.md` (spin-and-shoot rediscovery in all seeds, seed 2 born a spinner, step-0 pacifists); clip in `assets/weird/`.
+- Raw archive: `runs/v0_defend_center_s{1,2,3}/` (every checkpoint, every eval demo and sidecar, eval.csv, train.csv, flagged.csv, clips, figures), `runs/baseline/`, `runs/throughput/`, `runs/v0_smoke/`.
+
+**Known issues** (details under Open issues):
+- No cloud sync (no bucket on this machine); W&B runs are offline in `runs/<run>/wandb/` and can be uploaded with `wandb sync`.
+- `runs/` is about 28 GB on a nearly full disk; routine per-checkpoint clips were slimmed partway through (plain only, CRF 30) and early rolling resume checkpoints were pruned. Every demo, sidecar, and milestone checkpoint is kept, so any clip can be re-rendered.
+- Defend the Center cannot show close escapes (low health only happens after the ammo is gone), so the highlight reel has streaks only; `kd_ratio` is always kills/1.
+- Several engine and framework quirks were found and worked around (ViZDoom demo paths over 112 characters hang; ViZDoom draws its console over the second and later recorded episodes of a game; Sample Factory's `--train_for_seconds` never fires; Sample Factory pins its learner to one thread and its W&B init breaks with wandb 0.30; Mac sleep stops Sample Factory). Each is recorded with its fix below.
 
 ## Status
 
-- Overnight run (user away until about 8:45). Seed 1 finished training at 20.0M (2026-10-15 01:1x). Seeds 2 and 3 train concurrently (`scripts/queue_v0_parallel.sh`, tmux `v0_queue`), each resuming automatically after any stop. When all three are trained and their eval watchers have exited, `scripts/finalize_v0.sh` runs: smoke re-evaluation, unbiased confirmation of each seed's best, figures, montages, highlight reels, side-by-side videos, the seed-1 timelapse, and the fresh-clone reproduction check (`runs/fresh_clone_check.log`). Progress: `runs/queue_v0.log`; live view: http://127.0.0.1:8765.
-- tmux: `train_v0_defend_center_s2`, `_s3`, `watch_v0_defend_center_s1..3`, `v0_queue`, `caffeinate`, `dashboard`.
+- **v0 complete, 2026-10-15 04:45.** Nothing is training. The live dashboard (`tmux` session `dashboard`, http://127.0.0.1:8765) is left running; it is read-only.
 
 ## Gates
 
@@ -93,6 +122,22 @@ A read-only review agent went through `doomscent/`. Fixed (commit a7441e2, tests
 - Timelapse attention overlays renormalized every frame to full intensity, so a near-random network looked as attentive as a trained one. Saliency now uses one scale across all checkpoints (step 0's gradients turned out about 70x weaker than the trained network's). The timelapse tag showed an interpolated score no evaluated network produced; it now shows the on-screen checkpoint and its latest real held-out score.
 - Smaller: F4 counted detector hits as flagged episodes; pickups depended on reward weights; `record` named clips by raw env steps instead of the checkpoint boundary; the timelapse assumed `normalize_returns`; the mind map hard-coded the turn-head size; the resume-safe config keys were narrowed so `eval.episodes`, `eval.deterministic`, and detector thresholds can never change mid-run.
 - Not changed, noted: training accuracy (mean of per-episode ratios) and eval accuracy (pooled hits / shots) use different aggregations; figures compare like with like. `kd_ratio` is always kills/1 in this scenario (one death per episode).
+
+### Step 9: 3 seeds trained, dense checkpoints on seed 1: DONE (2026-10-15)
+
+- `configs/v0_defend_center_s{1,2,3}.yaml`, 20M env steps each: seed 1 finished 2026-10-15 01:14 (`runs/v0_defend_center_s1/TRAINING_DONE.json`, env_steps 20,004,864), seeds 2 and 3 at 03:28 (20,013,056 each). Seed 1 kept 212 milestone checkpoints (every 100K), seeds 2 and 3 kept 41 each (every 500K); none deleted.
+- Seed 1 trained alone, then seeds 2 and 3 concurrently overnight (`scripts/queue_v0_parallel.sh`) at about 2.1K FPS each. Interruptions (Mac sleep, disk full, a renice mistake) are recorded under Open issues; each run resumed from its checkpoint.
+
+### Step 10: final evaluations, assets, figures, timelapse, flagged clips, WEIRD.md: DONE (2026-10-15)
+
+- Every regular checkpoint of every seed evaluated on 100 held-out episodes after the console-overlay fix (41 rows in each `eval.csv`, including 20M); final clips from the 20M checkpoint (`clips/final/`); best clips at every new best (`clips/best/`).
+- Unbiased confirmation of each best checkpoint on 100 fresh held-out seeds: `runs/v0_defend_center_s*/metrics/confirm/` (numbers in the final report).
+- `scripts/finalize_v0.sh` (log `runs/queue_v0.log`, 03:31 to 04:28): smoke re-evaluation, confirmations, `figures` for all seeds and the smoke run (84 files each), `montage --ckpts auto` per seed, `highlights` and `sidebyside` per seed, `timelapse` for seed 1 (201 checkpoints, cache in `runs/v0_defend_center_s1/timelapse/cache/`, outputs in `runs/v0_defend_center_s1/timelapse/`; `timelapse_16x9.mp4` is 1920x1080, 60.0 fps, 60.0 s).
+- Flagged clips reviewed: seed 1 flagged 255 episodes, all at steps 0 to 1.5M (pacifist at step 0, spinning at 0.5M to 1.5M), none after 2M; seed 2: 74 (spinning, mostly the untrained policy); seed 3: 124 (pacifist at step 0, spinning at 0.5M to 1M). Real oddities written to `WEIRD.md`; the feature clip copied to `assets/weird/`.
+
+### Step 11: v0 "Done when": PASS (2026-10-15)
+
+- Gate in at least 2 of 3 seeds: 3 of 3 (see the final report). One command each for montage, timelapse, figures: yes. Fresh clone reproduces a run: yes (`runs/fresh_clone_check.log`).
 
 ## Decisions
 
