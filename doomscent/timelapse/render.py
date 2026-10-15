@@ -222,12 +222,12 @@ def render_main(
             brain_full = draw_brain(lay_full, change, change_scale, acts, act_scale, theme)
             brain_full = text(
                 brain_full,
-                (1896, 1040),
+                (24, 50),  # top-left is empty: the input column is short and centered
                 f"step {fmt_steps(step)}",
                 26,
                 theme.text,
                 "semibold",
-                "ra",
+                "la",
             )
             writers["brain"].write(brain_full)
             if t % (fps * 5) == 0:
