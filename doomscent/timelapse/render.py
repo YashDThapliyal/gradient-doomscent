@@ -28,7 +28,7 @@ from doomscent.plots.common import fmt_steps
 from doomscent.runs import RunPaths
 from doomscent.style import DARK, Theme, hex_to_rgb
 from doomscent.timelapse.brain import LAYERS
-from doomscent.timelapse.cache import build_cache, cache_path, tl_dir
+from doomscent.timelapse.cache import TL_SUBDIR, build_cache, cache_path, subsample, tl_dir
 from doomscent.timelapse.panels import (
     PAIRS,
     BrainLayout,
@@ -43,6 +43,11 @@ from doomscent.timelapse.panels import (
 from doomscent.video import FrameReader, VideoWriter
 
 GAME_FPS = 35
+DURATION_OVERRIDE: dict[str, float] = {}
+
+
+def duration_s(cfg_duration: float) -> float:
+    return float(DURATION_OVERRIDE.get("s", cfg_duration))
 
 
 @dataclass
@@ -134,7 +139,7 @@ def render_main(
 ) -> list[Path]:
     cfg = paths.load_config()
     tl = cfg.timelapse
-    fps, n_out = int(tl.fps), int(tl.fps) * int(tl.duration_s)
+    fps, n_out = int(tl.fps), int(int(tl.fps) * duration_s(tl.duration_s))
     units, sizes = units_info["units"], units_info["sizes"]
     change_scale, act_scale, vrange = scales(cached, units)
     heads = json.loads((paths.meta / "action_space.json").read_text())["heads"]
@@ -252,7 +257,8 @@ def render_attention(paths: RunPaths, cached: list[Cached], theme: Theme) -> Pat
     bp = best_pointer(paths)
     best_step = json.loads(bp.read_text())["step"] if bp.exists() else cached[-1].ck.step
     first = cached[0] if cached[0].ck.step > 0 or len(cached) == 1 else cached[1]
-    best = next(c for c in cached if c.ck.step == best_step)
+    # the best checkpoint, or the nearest cached one when only a subset was cached
+    best = min(cached, key=lambda c: abs(c.ck.step - best_step))
     start = GAME_FPS
     end = min(first.n_frames, best.n_frames, start + 7 * GAME_FPS)
     start = min(start, max(0, end - GAME_FPS))
@@ -297,7 +303,7 @@ def render_mind_map(paths: RunPaths, cached: list[Cached], theme: Theme) -> Path
     """Probe frames placed by UMAP of the GRU features, colored by turn direction."""
     cfg = paths.load_config()
     tl = cfg.timelapse
-    fps, n_out = int(tl.fps), int(tl.fps) * max(10, int(tl.duration_s) // 2)
+    fps, n_out = int(tl.fps), int(int(tl.fps) * max(5.0, duration_s(tl.duration_s) / 2))
     coords = np.load(tl_dir(paths) / "umap.npz")
     final = coords[cached[-1].ck.label]
     lo, hi = np.quantile(final, 0.01, axis=0), np.quantile(final, 0.99, axis=0)
@@ -358,12 +364,18 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--rebuild-cache", action="store_true")
     ap.add_argument("--skip-cache", action="store_true", help="render from the existing cache")
+    ap.add_argument("--subdir", default="timelapse", help="output folder inside the run")
+    ap.add_argument("--max-checkpoints", type=int, default=None, help="test on a subset")
+    ap.add_argument("--duration", type=float, default=None, help="override seconds (tests)")
     args = ap.parse_args(argv)
     paths = RunPaths.for_run(args.run)
+    TL_SUBDIR["name"] = args.subdir
+    if args.duration:
+        DURATION_OVERRIDE["s"] = args.duration
     if args.skip_cache:
-        cks = list_checkpoints(paths)
+        cks = subsample(list_checkpoints(paths), args.max_checkpoints)
     else:
-        cks = build_cache(paths, workers=args.workers, force=args.rebuild_cache)
+        cks = build_cache(paths, args.workers, args.rebuild_cache, args.max_checkpoints)
     units_info = json.loads((tl_dir(paths) / "units.json").read_text())
     cached = load_cached(paths, cks)
     theme = DARK

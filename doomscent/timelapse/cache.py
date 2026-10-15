@@ -37,10 +37,11 @@ from doomscent.timelapse.brain import (
 )
 
 FOOTAGE_RES = (1024, 576)
+TL_SUBDIR = {"name": "timelapse"}  # `timelapse --subdir` renders a test into another folder
 
 
 def tl_dir(paths: RunPaths) -> Path:
-    return paths.timelapse
+    return paths.root / TL_SUBDIR["name"]
 
 
 def cache_path(paths: RunPaths, ck: Checkpoint) -> Path:
@@ -150,6 +151,7 @@ def _cache_one(job: dict[str, Any]) -> str:
     from doomscent.render import render_demo
 
     torch.set_num_threads(1)
+    TL_SUBDIR["name"] = job["subdir"]  # worker processes do not inherit the parent's setting
     paths = RunPaths.for_run(job["run"])
     cfg = paths.load_config()
     ck = Checkpoint(Path(job["path"]), 0, job["env_steps"], job["step"], job["regular"])
@@ -226,10 +228,20 @@ def fit_umap(paths: RunPaths, cks: list[Checkpoint]) -> None:
     np.savez_compressed(tl_dir(paths) / "umap.npz", **coords)
 
 
-def build_cache(paths: RunPaths, workers: int = 4, force: bool = False) -> list[Checkpoint]:
+def subsample(cks: list[Checkpoint], n: int | None) -> list[Checkpoint]:
+    """Up to n checkpoints spread evenly from first to last (always both ends)."""
+    if not n or len(cks) <= n:
+        return cks
+    idx = sorted({round(i * (len(cks) - 1) / (n - 1)) for i in range(n)})
+    return [cks[i] for i in idx]
+
+
+def build_cache(
+    paths: RunPaths, workers: int = 4, force: bool = False, max_checkpoints: int | None = None
+) -> list[Checkpoint]:
     ensure_units(paths)
     ensure_probe(paths)
-    cks = list_checkpoints(paths)
+    cks = subsample(list_checkpoints(paths), max_checkpoints)
     jobs = [
         {
             "run": paths.name,
@@ -237,6 +249,7 @@ def build_cache(paths: RunPaths, workers: int = 4, force: bool = False) -> list[
             "env_steps": c.env_steps,
             "step": c.step,
             "regular": c.regular,
+            "subdir": TL_SUBDIR["name"],
         }
         for c in cks
         if force or not cache_path(paths, c).exists()

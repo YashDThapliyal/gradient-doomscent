@@ -77,6 +77,14 @@ Not written yet. v0 is in progress.
 - **Diagnosis of the early plateau.** From 0.7M to 2M training kills sat near 3.9. Shots per episode were 25.8 of the 26 rounds the pistol starts with, and each hit kills, so kills were capped by accuracy (about 15%). Two probes ran beside the smoke run to test whether the reward or the discount was the problem: `configs/v0_probe_gamma995.yaml` (gamma 0.995) and `configs/v0_probe_shotcost.yaml` (an extra -0.03 per round spent). Through 1M steps both matched the base run exactly (kills 3.80 and 3.91 vs 3.86, shots about 26). The base run then broke through on its own after 2M by aiming better. The probes were stopped at about 1M (folders kept) and **the spec's reward and Sample Factory's default discount are kept**. The ammo-spent term stays in the code, set to 0 in every config.
 - Also exercised on the smoke run: `doomscent figures` (F1 to F6 and F8, 84 files in `runs/v0_smoke/figures/`), `doomscent montage --ckpts auto` (`runs/v0_smoke/montage/montage__seed_900000000__0_500K_1M_1.5M.mp4`, 562 frames).
 
+### Step 8: evaluate, record, montage, figures, timelapse commands: PASS (2026-10-14)
+
+- `evaluate` and `record`: exercised by every eval watcher (100 held-out episodes per checkpoint with demos, sidecars, clips; train, best, and final clips through `record_and_render`). Seed 1, corrected evaluations: `runs/v0_defend_center_s1/metrics/eval.csv`.
+- `figures --run v0_smoke`: all 7 figures (F1 to F6, F8) at 3 sizes x 2 themes x PNG and PDF, 84 files. Layout issues found by viewing them and fixed: F3 tick labels overlapped the next panel, F8 subtitle overflowed the square size, F5 rows were cramped, F6 direct labels overlapped. (Those smoke figures were later quarantined with the invalid evaluations; they regenerate from corrected CSVs.)
+- `montage --run v0_smoke --ckpts auto`: 1280x720 2x2 grid, 562 frames, step tags (also quarantined; regenerated at the end).
+- `timelapse --run v0_defend_center_s1 --subdir timelapse_test --max-checkpoints 6 --duration 8`: brain-data cache for 6 checkpoints (0 to 7.3M), then `timelapse_16x9.mp4` (1920x1080, 480 frames at 60 fps), `timelapse_mobile.mp4` (1080x1350), `brain_only.mp4`, `attention_before_after.mp4` (245 frames), `mind_map.mp4` (300 frames), in `runs/v0_defend_center_s1/timelapse_test/`. Frames viewed: brain with weight-change edges and node activity, progressive curve with gate and baseline, decision bars, saliency on the footage, step and score tag; the mind map separates the probe frames by turn direction. The smoke run had no valid evaluations at this point (quarantined), so the timelapse was checked on a subset of seed 1 instead; the test folder is separate from the real `timelapse/`.
+- The brain's functional forward pass matches Sample Factory's model outputs to 1e-4 (`tests/test_brain.py`).
+
 ## Decisions
 
 - Package name is `doomscent` (not `doomrl`), per the project brief. W&B project name is `gradient-doomscent`.

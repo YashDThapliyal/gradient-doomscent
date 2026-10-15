@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
+from matplotlib.ticker import MaxNLocator
 from PIL import Image, ImageDraw
 
 from doomscent.plots.common import fmt_steps
@@ -160,12 +161,13 @@ class CurvePanel:
     def _axes(self) -> np.ndarray:
         t = self.theme
         img = np.full((self.h, self.w, 3), hex_to_rgb(t.background), np.uint8)
-        for yv in np.linspace(0, self.y_max, 5)[:-1]:
-            yv = round(yv)
+        y_ticks = MaxNLocator(nbins=5, integer=True).tick_values(0, self.y_max)
+        for yv in [v for v in y_ticks if 0 <= v <= self.y_max]:
             _, y = self.px(0, yv)
             cv2.line(img, (self.left, y), (self.right, y), hex_to_rgb(t.grid), 1, cv2.LINE_AA)
             img = text(img, (self.left - 10, y), f"{yv:.0f}", 13, t.subtext, anchor="rm")
-        for xv in np.linspace(0, self.d.x_max, 5):
+        x_ticks = MaxNLocator(nbins=5, steps=[1, 2, 2.5, 5, 10]).tick_values(0, self.d.x_max)
+        for xv in [v for v in x_ticks if 0 <= v <= self.d.x_max]:
             x, _ = self.px(xv, 0)
             img = text(img, (x, self.bottom + 12), fmt_steps(xv), 13, t.subtext, anchor="ma")
         for val, label in ((self.d.baseline, "scripted baseline"), (self.d.gate, "1.5x gate")):
