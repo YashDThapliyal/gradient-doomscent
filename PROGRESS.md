@@ -64,9 +64,10 @@ Not written yet. v0 is in progress.
 - **Chosen config: 3 seeds trained at the same time, each with 3 rollout workers x 8 envs per worker** (`configs/v0_defend_center.yaml`).
 - Files: `runs/throughput/mac_m3pro/results.csv`, `concurrent.csv`, and every probe run folder with its `train.log`.
 
-### Step 7: training, checkpoint retention, eval watcher: RE-VALIDATING (2026-10-14)
+### Step 7: training, checkpoint retention, eval watcher: PASS (re-confirmed 2026-10-15)
 
-- **The held-out numbers below came from corrupted evaluations** (see the console-overlay bug under Open issues) and were quarantined. The smoke run is being re-evaluated with the fix; this entry will be updated with the corrected numbers.
+- **Corrected held-out kills, smoke run** (re-evaluated after the console-overlay fix, 100 held-out episodes each, deterministic policy, `runs/v0_smoke/metrics/eval.csv`): step 0: 0.00; 500K: 2.83 [2.62, 3.04]; 1M: 3.11 [2.94, 3.28]; 1.5M: 3.50 [3.32, 3.69]; 2M: 4.52 [4.32, 4.72]; 2.5M: 4.76 [4.58, 4.94]; 3M: 5.17 [4.98, 5.36]; 3.5M: 5.34 [5.15, 5.53]; 4M: 6.02 [5.82, 6.22]. Rising at every checkpoint.
+- The numbers listed below this line were the original evaluations, which were corrupted by the console-overlay bug and are kept here only as the record of what was first reported.
 
 - Command: `scripts/launch_run.sh configs/v0_smoke.yaml` (4M env steps, checkpoints every 500K, dense every 100K, W&B offline), tmux sessions `train_v0_smoke` and `watch_v0_smoke`.
 - Training finished: `runs/v0_smoke/TRAINING_DONE.json` (`env_steps 4022272`). Every checkpoint kept: 41 milestones in `runs/v0_smoke/sf/checkpoint_p0/milestones/` (step 0 plus every 100K).
