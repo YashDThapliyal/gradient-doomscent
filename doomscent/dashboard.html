@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gradient Doomscent</title>
+<style>
+  :root {
+    --paper: #fbfaf6; --ink: #141414; --soft: #6e6c66; --faint: #d9d6ce; --hair: #ebe8e1;
+    --s1: #141414; --s2: #8c2a1f; --s3: #7a7872;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: "Times New Roman", Times, serif; font-size: 17px; line-height: 1.45;
+  }
+  main { max-width: 980px; margin: 0 auto; padding: 48px 24px 80px; }
+  header { border-bottom: 1px solid var(--ink); padding-bottom: 14px; margin-bottom: 28px; }
+  h1 { font-weight: normal; font-size: 40px; margin: 0; letter-spacing: 0.01em; }
+  h1 em { font-style: italic; }
+  .sub { color: var(--soft); font-style: italic; margin-top: 4px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  h2 { font-weight: normal; font-size: 21px; margin: 40px 0 10px; font-style: italic; }
+  .note { color: var(--soft); font-size: 14px; margin: -6px 0 10px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th { font-weight: normal; font-style: italic; color: var(--soft); text-align: left; font-size: 14px;
+       border-bottom: 1px solid var(--faint); padding: 6px 8px 6px 0; }
+  td { padding: 9px 8px 9px 0; border-bottom: 1px solid var(--hair); vertical-align: middle; }
+  td.r, th.r { text-align: right; }
+  .swatch { display: inline-block; width: 18px; height: 2px; vertical-align: middle; margin-right: 8px; }
+  .bar { position: relative; height: 2px; background: var(--faint); min-width: 120px; }
+  .bar span { position: absolute; left: 0; top: -1px; height: 4px; background: var(--ink); }
+  .status { font-style: italic; }
+  .status.training::before { content: "● "; color: var(--s2); animation: pulse 1.6s infinite; font-style: normal; font-size: 12px; }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+  svg { width: 100%; height: auto; display: block; overflow: visible; }
+  svg text { font-family: "Times New Roman", Times, serif; fill: var(--soft); font-size: 13px; }
+  svg .lbl { font-size: 14px; font-style: italic; }
+  .grid line { stroke: var(--hair); }
+  .events { font-size: 15px; color: var(--soft); list-style: none; padding: 0; margin: 0; }
+  .events li { padding: 4px 0; border-bottom: 1px solid var(--hair); }
+  .events b { font-weight: normal; color: var(--ink); }
+  .big { font-size: 34px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 18px; margin-bottom: 8px; }
+  .kpi .k { color: var(--soft); font-style: italic; font-size: 14px; }
+  footer { margin-top: 48px; color: var(--soft); font-size: 13px; font-style: italic; }
+  @media (max-width: 640px) { h1 { font-size: 30px; } .hide-sm { display: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Gradient <em>Doomscent</em></h1>
+    <div class="sub"><span>v0 · It learns to fight · Defend the Center</span><span id="updated">connecting…</span></div>
+  </header>
+
+  <div class="kpis" id="kpis"></div>
+
+  <h2>Runs</h2>
+  <table>
+    <thead><tr><th>seed</th><th>status</th><th class="hide-sm">progress</th><th class="r">frames</th>
+      <th class="r hide-sm">fps</th><th class="r">eta</th><th class="r">best held-out kills</th></tr></thead>
+    <tbody id="runs"></tbody>
+  </table>
+
+  <h2>Held-out kills per episode</h2>
+  <p class="note">100 unseen games per checkpoint, deterministic policy; band is the 95% interval.</p>
+  <div id="evalChart"></div>
+
+  <h2>Training kills per episode</h2>
+  <p class="note">Rolling mean over the last 100 practice games, sampled policy.</p>
+  <div id="trainChart"></div>
+
+  <h2>Accuracy on held-out games</h2>
+  <p class="note">Hits divided by shots fired.</p>
+  <div id="accChart"></div>
+
+  <h2>Recent evaluations</h2>
+  <ul class="events" id="events"></ul>
+
+  <footer>Refreshes every 10 seconds. Read-only view of runs/ on this machine.</footer>
+</main>
+<script>
+const COLORS = ["var(--s1)", "var(--s2)", "var(--s3)", "#3e5c76"];
+const fmtSteps = x => x >= 1e6 ? (x / 1e6).toFixed(x % 1e6 ? 1 : 0) + "M" : x >= 1e3 ? Math.round(x / 1e3) + "K" : String(Math.round(x));
+const fmtDur = s => s == null ? "–" : s < 3600 ? Math.round(s / 60) + " min" : (s / 3600).toFixed(1) + " h";
+const seedOf = name => (name.match(/_s(\d+)$/) || [, name])[1];
+const NS = "http://www.w3.org/2000/svg";
+const el = (tag, attrs = {}, parent) => { const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); if (parent) parent.appendChild(e); return e; };
+
+function niceTicks(max, n = 5) {
+  const raw = max / n, mag = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw) || mag * 10;
+  const out = []; for (let v = 0; v <= max + 1e-9; v += step) out.push(v); return out;
+}
+
+function chart(container, series, { refs = [], xMax, yMax, yFmt = v => v, height = 300 }) {
+  const W = 940, H = height, L = 46, R = 150, T = 12, B = 34;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}` });
+  const px = x => L + (x / xMax) * (W - L - R), py = y => H - B - (y / yMax) * (H - T - B);
+  const grid = el("g", { class: "grid" }, svg);
+  for (const v of niceTicks(yMax, 4)) {
+    el("line", { x1: L, x2: W - R, y1: py(v), y2: py(v) }, grid);
+    el("text", { x: L - 8, y: py(v) + 4, "text-anchor": "end" }, svg).textContent = yFmt(v);
+  }
+  for (const v of niceTicks(xMax, 5)) el("text", { x: px(v), y: H - 10, "text-anchor": "middle" }, svg).textContent = fmtSteps(v);
+  for (const r of refs) {
+    el("line", { x1: L, x2: W - R, y1: py(r.y), y2: py(r.y), stroke: "var(--soft)", "stroke-dasharray": r.dash || "4 4", "stroke-width": 1 }, svg);
+    el("text", { x: W - R + 8, y: py(r.y) + 4, class: "lbl" }, svg).textContent = r.label;
+  }
+  const ends = [];
+  for (const s of series) {
+    if (!s.points.length) continue;
+    if (s.band) {
+      const up = s.points.map(p => `${px(p.x)},${py(p.hi)}`), dn = s.points.slice().reverse().map(p => `${px(p.x)},${py(p.lo)}`);
+      el("polygon", { points: up.concat(dn).join(" "), fill: s.color, opacity: 0.08 }, svg);
+    }
+    el("polyline", { points: s.points.map(p => `${px(p.x)},${py(p.y)}`).join(" "), fill: "none", stroke: s.color, "stroke-width": 1.6, "stroke-linejoin": "round" }, svg);
+    const last = s.points[s.points.length - 1];
+    el("circle", { cx: px(last.x), cy: py(last.y), r: 2.6, fill: s.color }, svg);
+    ends.push({ y: py(last.y), x: px(last.x), text: s.label, color: s.color });
+  }
+  ends.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) ends[i].y = Math.max(ends[i].y, ends[i - 1].y + 16);
+  for (const e of ends) { const t = el("text", { x: W - R + 8, y: e.y + 4, class: "lbl" }, svg); t.textContent = e.text; t.style.fill = e.color; }
+  container.replaceChildren(svg);
+}
+
+function render(d) {
+  document.getElementById("updated").textContent = "updated " + d.time;
+  const runs = d.runs;
+  const xMax = Math.max(...runs.map(r => r.target), 1);
+  const bests = runs.filter(r => r.best).map(r => r.best.kills);
+  const passing = runs.filter(r => r.best && d.gate && r.best.kills >= d.gate).length;
+  const live = runs.find(r => r.status === "training");
+  document.getElementById("kpis").innerHTML = [
+    ["best held-out kills", bests.length ? Math.max(...bests).toFixed(2) : "–"],
+    ["v0 gate", d.gate ? d.gate.toFixed(2) : "–"],
+    ["seeds past the gate", `${passing} of ${runs.length}`],
+    ["training now", live ? "seed " + seedOf(live.name) : "–"],
+  ].map(([k, v]) => `<div class="kpi"><div class="k">${k}</div><div class="big">${v}</div></div>`).join("");
+
+  document.getElementById("runs").innerHTML = runs.map((r, i) => `<tr>
+      <td><span class="swatch" style="background:${COLORS[i]}"></span>${seedOf(r.name)}</td>
+      <td class="status ${r.status}">${r.status}</td>
+      <td class="hide-sm"><div class="bar"><span style="width:${Math.min(100, 100 * r.frames / r.target).toFixed(1)}%"></span></div></td>
+      <td class="r">${fmtSteps(r.frames)} / ${fmtSteps(r.target)}</td>
+      <td class="r hide-sm">${r.fps ? Math.round(r.fps).toLocaleString() : "–"}</td>
+      <td class="r">${r.status === "finished" ? "done" : fmtDur(r.eta_s)}</td>
+      <td class="r">${r.best ? r.best.kills.toFixed(2) + ` <span style="color:var(--soft)">at ${fmtSteps(r.best.step)}</span>` : "–"}</td>
+    </tr>`).join("");
+
+  const evalMax = Math.max(d.gate || 0, ...runs.flatMap(r => r.eval.map(p => p.hi || p.kills || 0)), 1) * 1.1;
+  chart(document.getElementById("evalChart"),
+    runs.map((r, i) => ({ label: "seed " + seedOf(r.name), color: COLORS[i], band: true,
+      points: r.eval.map(p => ({ x: p.step, y: p.kills, lo: p.lo, hi: p.hi })) })),
+    { xMax, yMax: evalMax, refs: [
+        d.gate ? { y: d.gate, label: `gate ${d.gate.toFixed(2)}`, dash: "2 3" } : null,
+        d.baseline ? { y: d.baseline, label: `scripted bot ${d.baseline.toFixed(2)}` } : null].filter(Boolean) });
+
+  const trMax = Math.max(1, ...runs.flatMap(r => r.train.map(p => p.kills || 0))) * 1.1;
+  chart(document.getElementById("trainChart"),
+    runs.map((r, i) => ({ label: "seed " + seedOf(r.name), color: COLORS[i], points: r.train.map(p => ({ x: p.step, y: p.kills })) })),
+    { xMax, yMax: trMax, height: 240 });
+
+  chart(document.getElementById("accChart"),
+    runs.map((r, i) => ({ label: "seed " + seedOf(r.name), color: COLORS[i], points: r.eval.filter(p => p.acc != null).map(p => ({ x: p.step, y: p.acc })) })),
+    { xMax, yMax: 0.6, height: 200, yFmt: v => Math.round(v * 100) + "%" });
+
+  const events = runs.flatMap(r => r.events.map(e => ({ seed: seedOf(r.name), line: e }))).sort((a, b) => b.line.localeCompare(a.line)).slice(0, 10);
+  document.getElementById("events").innerHTML = events.map(e => {
+    const m = e.line.match(/^\[(.+?)\] (.*)$/) || [, "", e.line];
+    const text = m[2].replace(/\(env_steps \d+\)/, "").replace(/step_0*(\d+)/, (_, n) => "step " + fmtSteps(+n || 0));
+    return `<li>${m[1].slice(11, 16)} · seed ${e.seed} · <b>${text}</b></li>`;
+  }).join("");
+}
+
+async function tick() {
+  try { const r = await fetch("/api/state", { cache: "no-store" }); render(await r.json()); }
+  catch (e) { document.getElementById("updated").textContent = "server not reachable"; }
+}
+tick(); setInterval(tick, 10000);
+</script>
+</body>
+</html>

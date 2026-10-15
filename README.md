@@ -38,6 +38,9 @@ uv run doomscent montage   --run v0_defend_center_s1 --ckpts auto     # or 0,1M,
 uv run doomscent figures   --run v0_defend_center_s1
 uv run doomscent timelapse --run v0_defend_center_s1
 uv run doomscent throughput --config configs/v0_defend_center.yaml --machine mac_m3pro
+
+# live, read-only dashboard of the runs at http://127.0.0.1:8765 (refreshes every 10 s)
+uv run doomscent dashboard --runs "v0_defend_center_s*"
 ```
 
 `--ckpt` takes a step (`2.5M`, `500K`, `2500000`), `latest`, `final`, or `best` (best held-out mean kills). Thin shell wrappers live in `scripts/`.

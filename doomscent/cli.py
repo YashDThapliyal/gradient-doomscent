@@ -15,6 +15,7 @@ COMMANDS = {
     "eval-watcher": "doomscent.eval_watcher",
     "baseline": "doomscent.baseline",
     "throughput": "doomscent.throughput",
+    "dashboard": "doomscent.dashboard",
 }
 
 
