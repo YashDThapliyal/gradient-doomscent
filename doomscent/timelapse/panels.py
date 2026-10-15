@@ -203,13 +203,17 @@ class CurvePanel:
         return img
 
 
-def saliency_overlay(frame: np.ndarray, sal_u8: np.ndarray, theme: Theme, blur: int) -> np.ndarray:
-    """Attention heatmap: the accent hue blended where gradients are largest."""
+def saliency_overlay(frame: np.ndarray, sal: np.ndarray, theme: Theme, blur: int) -> np.ndarray:
+    """Attention heatmap: the accent hue blended where gradients are largest.
+
+    `sal` is gradient magnitude divided by one scale shared by every checkpoint and frame,
+    so a network with weak gradients really does look faint (no per-frame renormalizing).
+    """
     h, w = frame.shape[:2]
-    m = cv2.resize(sal_u8.astype(np.float32) / 255.0, (w, h), interpolation=cv2.INTER_LINEAR)
+    m = cv2.resize(sal.astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR)
     k = blur * max(1, w // 128) | 1
     m = cv2.GaussianBlur(m, (k, k), 0)
-    m = np.clip(m / max(float(m.max()), 1e-6), 0, 1)[..., None] * 0.65
+    m = np.clip(m, 0, 1)[..., None] * 0.75
     acc = np.array(hex_to_rgb(theme.accent), np.float32)
     return (frame.astype(np.float32) * (1 - m) + acc * m).astype(np.uint8)
 
@@ -259,12 +263,22 @@ def draw_decision(
 
 
 def draw_tag_block(
-    width: int, height: int, step: float, score: float, fight_kills: float, theme: Theme
+    width: int,
+    height: int,
+    step: float,
+    score: float,
+    fight_kills: float,
+    theme: Theme,
+    eval_step: float | None = None,
 ) -> np.ndarray:
+    """Step and score of the checkpoint on screen (its latest held-out evaluation)."""
     img = np.full((height, width, 3), hex_to_rgb(theme.background), np.uint8)
-    img = text(img, (28, 30), "environment steps", 14, theme.subtext)
+    img = text(img, (28, 30), "checkpoint (environment steps)", 14, theme.subtext)
     img = text(img, (28, 52), fmt_steps(step), 54, theme.text, "semibold")
-    img = text(img, (28, 140), "held-out kills per episode", 14, theme.subtext)
+    where = (
+        "" if eval_step is None or eval_step == step else f", evaluated at {fmt_steps(eval_step)}"
+    )
+    img = text(img, (28, 140), f"held-out kills per episode{where}", 14, theme.subtext)
     img = text(img, (28, 162), f"{score:.1f}", 54, theme.accent, "semibold")
     img = text(img, (28, 250), f"this fight: {fight_kills:.0f} kills so far", 14, theme.subtext)
     return img

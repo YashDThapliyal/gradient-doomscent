@@ -22,8 +22,20 @@ from doomscent.runs import RunPaths, git_commit, write_run_metadata
 
 # Keys that may differ when resuming: bookkeeping and evaluation settings that cannot change
 # what the agent learns. Reward, actions, env, seeds, and training settings never may.
-RESUME_SAFE_KEYS = ("train.wandb.mode",)
-RESUME_SAFE_PREFIXES = ("eval.", "record.", "detectors.", "sync.", "timelapse.", "baseline.")
+RESUME_SAFE_KEYS = (
+    "train.wandb.mode",
+    "eval.num_workers",
+    "eval.poll_interval_s",
+    "eval.routine_clip_variants",
+    "eval.max_multi_kill_clips",
+    "eval.clips_first_n",
+    "eval.train_clip_episodes",
+    "eval.best_clip_episodes",
+    "eval.final_clip_episodes",
+    "eval.step0_clip_episodes",
+)
+# Never here: eval.episodes, eval.deterministic, detectors.*: they change recorded numbers.
+RESUME_SAFE_PREFIXES = ("record.", "sync.", "timelapse.")
 
 
 def sf_argv(cfg: DictConfig, paths: RunPaths) -> list[str]:

@@ -20,6 +20,8 @@ def seed_matrix(runs: list[RunPaths], column: str) -> tuple[np.ndarray, np.ndarr
     """Steps evaluated in every seed, and a (seeds, steps) matrix of `column`."""
     evals = [load_eval(r).set_index("step") for r in runs]
     steps = sorted(set.intersection(*(set(e.index) for e in evals)))
+    if not steps:
+        raise ValueError("the seeds share no evaluated checkpoint yet")
     return np.array(steps), np.array([[e.loc[s, column] for s in steps] for e in evals])
 
 

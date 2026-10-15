@@ -195,12 +195,18 @@ def upsert_eval_row(paths: RunPaths, row: dict) -> pd.DataFrame:
     return df
 
 
-def append_flagged(paths: RunPaths, rows: list[dict]) -> None:
-    if not rows:
-        return
+def append_flagged(paths: RunPaths, rows: list[dict], step: int) -> None:
+    """Replace this checkpoint's rows in flagged.csv (re-evaluating never duplicates them)."""
     out = paths.flagged_csv
-    df = pd.DataFrame(rows)
-    df.to_csv(out, mode="a", header=not out.exists(), index=False)
+    old = pd.read_csv(out) if out.exists() else pd.DataFrame()
+    if not old.empty:
+        old = old[old["step"] != step]
+    df = pd.concat([old, pd.DataFrame(rows)], ignore_index=True)
+    if df.empty:
+        return
+    tmp = out.with_suffix(".csv.tmp")
+    df.to_csv(tmp, index=False)
+    tmp.replace(out)
 
 
 def evaluate(
@@ -295,6 +301,7 @@ def evaluate(
             | {"clip": flagged_clip.get(f["demo"], "")}
             for f in flags
         ],
+        ck.step,
     )
 
     (paths.metrics / "eval_episodes").mkdir(parents=True, exist_ok=True)
@@ -307,6 +314,55 @@ def evaluate(
     return summary
 
 
+def confirm(
+    paths: RunPaths, ck: Checkpoint, episodes: int, workers: int, seed_offset: int
+) -> dict[str, Any]:
+    """Re-measure a checkpoint on a disjoint block of held-out seeds.
+
+    `best` is chosen as the argmax over checkpoints on the first held-out seeds, so its score
+    there is optimistically biased (winner's curse). This fresh block gives the unbiased
+    number. Results go to metrics/confirm/ and never touch eval.csv, best, or flags.
+    """
+    cfg = paths.load_config()
+    lo, hi = int(cfg.seeds.heldout.start), int(cfg.seeds.heldout.stop)
+    start = int(cfg.seeds.eval_start) + seed_offset
+    if seed_offset < int(cfg.eval.episodes) or start + episodes > hi or start < lo:
+        raise ValueError("confirmation seeds must be held-out and disjoint from the eval seeds")
+    seeds = [start + i for i in range(episodes)]
+    chunks = [list(enumerate(seeds))[i::workers] for i in range(workers)]
+    out_dir = paths.clips / "confirm" / ck.label
+    jobs = [
+        {
+            "run": paths.name,
+            "ckpt_path": str(ck.path),
+            "label": ck.label,
+            "step": ck.step,
+            "episodes": chunk,
+            "out_dir": str(out_dir),
+            "deterministic": bool(cfg.eval.deterministic),
+            "window": int(cfg.eval.multi_kill_window_steps),
+        }
+        for chunk in chunks
+        if chunk
+    ]
+    with _pool(len(jobs)) as pool:
+        rows = [r for part in pool.map(_eval_worker, jobs) for r in part]
+    df = pd.DataFrame(rows).sort_values("episode").reset_index(drop=True)
+    try:
+        from doomscent.baseline import load_baseline
+
+        base = float(load_baseline(cfg.env.scenario)["kills_mean"])
+    except FileNotFoundError:
+        base = float("nan")
+    summary = summarize(df, ck, ck.label, 0, base)
+    summary.update({"seed_first": seeds[0], "seed_last": seeds[-1], "purpose": "confirm"})
+    d = paths.metrics / "confirm"
+    d.mkdir(parents=True, exist_ok=True)
+    df.to_csv(d / f"{ck.label}_episodes.csv", index=False)
+    (d / f"{ck.label}.json").write_text(json.dumps(summary, indent=2))
+    return summary
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="doomscent evaluate")
     ap.add_argument("--run", required=True)
@@ -314,13 +370,22 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--episodes", type=int, default=None)
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--no-render", action="store_true")
+    ap.add_argument(
+        "--confirm-offset",
+        type=int,
+        default=None,
+        help="re-measure on fresh held-out seeds starting at eval_start + offset (unbiased best)",
+    )
     args = ap.parse_args(argv)
     paths = RunPaths.for_run(args.run)
     cfg = paths.load_config()
     ck = resolve_checkpoint(paths, args.ckpt)
     episodes = args.episodes or int(cfg.eval.episodes)
     workers = args.workers or int(cfg.eval.num_workers)
-    summary = evaluate(paths, ck, episodes, workers, render=not args.no_render)
+    if args.confirm_offset is not None:
+        summary = confirm(paths, ck, episodes, workers, args.confirm_offset)
+    else:
+        summary = evaluate(paths, ck, episodes, workers, render=not args.no_render)
     print(json.dumps(summary, indent=2))
 
 

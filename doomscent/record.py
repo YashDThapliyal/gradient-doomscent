@@ -49,7 +49,7 @@ def make_policy(
 
     ckpt = resolve_checkpoint(paths, spec)
     policy = load_policy(paths, ckpt.path, deterministic=bool(cfg.eval.deterministic))
-    return policy, ckpt.env_steps, ckpt.label
+    return policy, ckpt.step, ckpt.label
 
 
 def record_and_render(

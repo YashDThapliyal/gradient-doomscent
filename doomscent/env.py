@@ -19,7 +19,7 @@ import vizdoom as vzd
 from omegaconf import DictConfig, OmegaConf
 
 from doomscent.actions import FactoredActionSpace, build_action_space
-from doomscent.reward import RewardWeights, step_reward
+from doomscent.reward import RewardWeights, pickup_events, step_reward
 
 REPO_SCENARIOS = Path(__file__).resolve().parent.parent / "scenarios"
 
@@ -272,7 +272,8 @@ class DoomEnv(gym.Env):
             ep["shots"] += max(
                 0.0, prev.get("SELECTED_WEAPON_AMMO", 0.0) - cur.get("SELECTED_WEAPON_AMMO", 0.0)
             )
-        ep["pickups"] += int(rb.weapon_ammo_pickup != 0) + int(rb.health_armor_pickup != 0)
+        gained = any(cur.get(v, 0) > prev.get(v, 0) for v in ("HEALTH", "ARMOR")) and not died
+        ep["pickups"] += pickup_events(prev, cur, self.ammo_vars, self.weapon_vars) + int(gained)
         enemies = self._enemies_visible(state)
         ep["enemy_steps"] += int(enemies > 0)
         for counts, a in zip(ep["action_counts"], action, strict=True):

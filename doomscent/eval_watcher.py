@@ -76,23 +76,29 @@ def record_clips(
 
 
 def update_best(paths: RunPaths, ck: Checkpoint, summary: dict) -> bool:
+    """Point `best` at the argmax of held-out kills over every evaluated checkpoint.
+
+    Recomputed from eval.csv each time, so re-evaluations can never leave a stale pointer.
+    Returns True when the best checkpoint changed to `ck`.
+    """
+    ev = pd.read_csv(paths.metrics / "eval.csv")
+    top = ev.sort_values(["kills", "reward"], ascending=False).iloc[0]
     p = best_pointer(paths)
-    prev = json.loads(p.read_text()) if p.exists() else None
-    better = prev is None or (summary["kills"], summary["reward"]) > (
-        prev["kills"],
-        prev["reward"],
-    )
-    if better:
-        info = {
-            "step": ck.step,
-            "env_steps": ck.env_steps,
-            "path": str(ck.path),
-            "kills": summary["kills"],
-            "kills_ci": [summary["kills_ci_lo"], summary["kills_ci_hi"]],
-            "reward": summary["reward"],
-        }
-        p.write_text(json.dumps(info, indent=2))
-    return better
+    prev = json.loads(p.read_text())["step"] if p.exists() else None
+    by_step = {c.step: c for c in list_checkpoints(paths)}
+    best_ck = by_step.get(int(top.step), ck)
+    info = {
+        "step": int(top.step),
+        "env_steps": int(top.env_steps),
+        "path": str(best_ck.path),
+        "kills": float(top.kills),
+        "kills_ci": [float(top.kills_ci_lo), float(top.kills_ci_hi)],
+        "reward": float(top.reward),
+    }
+    tmp = p.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(info, indent=2))
+    tmp.replace(p)
+    return int(top.step) != prev and int(top.step) == ck.step
 
 
 def sync(paths: RunPaths) -> None:
@@ -155,7 +161,10 @@ def run_watcher(paths: RunPaths, poll: float, once: bool = False) -> None:
         if training_done and cks and cks[-1].step not in done and cks[-1] not in todo:
             todo.append(cks[-1])  # the final checkpoint is always evaluated
         for ck in todo:
-            process_checkpoint(paths, ck)
+            try:
+                process_checkpoint(paths, ck)
+            except Exception as e:  # keep watching; this checkpoint is retried next poll
+                log(paths, f"evaluation of {ck.label} failed, will retry: {type(e).__name__}: {e}")
         if training_done and not todo:
             final_dir = paths.clips / "final"
             if not any(final_dir.glob("*.mp4")):

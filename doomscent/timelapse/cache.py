@@ -116,7 +116,8 @@ class BrainPolicy:
             probs[name] = [round(float(x), 4) for x in p]
             start += n
         v = out.value.reshape(1).clone()
-        self.model.returns_normalizer(v, denormalize=True)
+        if getattr(self.model, "returns_normalizer", None) is not None:
+            self.model.returns_normalizer(v, denormalize=True)
         self.log["acts"].append(
             np.concatenate([out.acts[lyr][0, self.units[lyr]].numpy() for lyr in LAYERS])
         )
@@ -180,6 +181,7 @@ def _cache_one(job: dict[str, Any]) -> str:
             "fight_probs": np.stack(policy.log["probs"]).astype(np.float32),
             "fight_value": np.array(policy.log["value"], dtype=np.float32),
             "fight_sal": np.clip(sal / scale * 255, 0, 255).astype(np.uint8),
+            "fight_sal_scale": np.array(scale, dtype=np.float32),  # raw = u8 / 255 * scale
             "fight_kills": np.array([s["vars"]["KILLCOUNT"] for s in res.steps], np.float32),
             "fight_meta": np.array(
                 json.dumps({"seed": seed, "demo": str(demo), "kills": res.stats["kills"]})

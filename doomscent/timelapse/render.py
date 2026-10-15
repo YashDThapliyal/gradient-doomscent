@@ -58,6 +58,7 @@ class Cached:
     probs: np.ndarray
     value: np.ndarray
     sal: np.ndarray
+    sal_scale: float  # raw saliency = sal / 255 * sal_scale
     kills: np.ndarray
     n_frames: int
     probe_logits: np.ndarray
@@ -75,6 +76,7 @@ def load_cached(paths: RunPaths, cks: list[Checkpoint]) -> list[Cached]:
                 d["fight_probs"],
                 d["fight_value"],
                 d["fight_sal"],
+                float(d["fight_sal_scale"]) if "fight_sal_scale" in d else 255.0,
                 d["fight_kills"],
                 int(d["footage_frames"]),
                 d["probe_logits"],
@@ -98,6 +100,22 @@ def scales(cached: list[Cached], units: dict[str, list[int]]) -> tuple[dict, dic
         start += n
     vals = np.concatenate([c.value for c in cached])
     return change_scale, act_scale, (float(np.quantile(vals, 0.01)), float(np.quantile(vals, 0.99)))
+
+
+def sal_map(c: Cached, si: int, global_scale: float) -> np.ndarray:
+    """Saliency of step si on the scale shared by every checkpoint."""
+    return c.sal[si].astype(np.float32) / 255.0 * c.sal_scale / max(global_scale, 1e-12)
+
+
+def global_sal_scale(cached: list[Cached]) -> float:
+    return max(c.sal_scale for c in cached)
+
+
+def eval_at(curve: CurveData, step: float) -> tuple[float, float]:
+    """Kills of the latest held-out evaluation at or before `step`, and its step."""
+    idx = np.nonzero(curve.steps <= step)[0]
+    i = int(idx[-1]) if len(idx) else 0
+    return float(curve.kills[i]), float(curve.steps[i])
 
 
 def curve_data(paths: RunPaths, x_max: float) -> CurveData:
@@ -163,6 +181,7 @@ def render_main(
     footage = Footage(paths)
     bg = hex_to_rgb(theme.background)
     n_ck = len(cached)
+    g_sal = global_sal_scale(cached)
     blur = int(tl.saliency_blur_px)
     try:
         for t in range(n_out):
@@ -176,9 +195,9 @@ def render_main(
             fi = tic % max(1, cur.n_frames)
             si = min(fi // int(cfg.env.frame_skip), len(cur.acts) - 1)
             acts = cur.acts[si]
-            score = curve_wide.value_at(step)
+            score, score_step = eval_at(curve_wide.d, cur.ck.step)
             game = footage.frame(cur.ck.label, fi)
-            game = saliency_overlay(game, cur.sal[si], theme, blur)
+            game = saliency_overlay(game, sal_map(cur, si, g_sal), theme, blur)
             kills_now = float(cur.kills[si])
 
             brain_w = draw_brain(lay_wide, change, change_scale, acts, act_scale, theme)
@@ -190,7 +209,9 @@ def render_main(
             frame[560:1080, 0:480] = draw_decision(
                 480, 520, cur.probs[si], heads, float(cur.value[si]), vrange, theme
             )
-            frame[560:1080, 1404:1920] = draw_tag_block(516, 520, step, score, kills_now, theme)
+            frame[560:1080, 1404:1920] = draw_tag_block(
+                516, 520, cur.ck.step, score, kills_now, theme, score_step
+            )
             frame = text(
                 frame,
                 (500, 1050),
@@ -213,7 +234,9 @@ def render_main(
             )
             tall[560:880] = curve_tall.draw(step)
             tall[880:1350, 0:1080] = _letterbox(game, 1080, 470, bg)
-            tall = text(tall, (24, 900), f"step {fmt_steps(step)}", 30, theme.text, "semibold")
+            tall = text(
+                tall, (24, 900), f"step {fmt_steps(cur.ck.step)}", 30, theme.text, "semibold"
+            )
             tall = text(
                 tall, (24, 940), f"held-out kills {score:.1f}", 20, theme.accent, "semibold"
             )
@@ -266,6 +289,7 @@ def render_attention(paths: RunPaths, cached: list[Cached], theme: Theme) -> Pat
     footage = Footage(paths)
     bg = hex_to_rgb(theme.background)
     fs = int(cfg.env.frame_skip)
+    g_sal = global_sal_scale(cached)  # same scale as the main timelapse, across checkpoints
     with VideoWriter(out, 1920, 620, GAME_FPS, 20) as w:
         for fi in range(start, end):
             frame = np.empty((620, 1920, 3), np.uint8)
@@ -274,7 +298,7 @@ def render_attention(paths: RunPaths, cached: list[Cached], theme: Theme) -> Pat
                 si = min(fi // fs, len(c.sal) - 1)
                 g = saliency_overlay(
                     footage.frame(c.ck.label, fi),
-                    c.sal[si],
+                    sal_map(c, si, g_sal),
                     theme,
                     int(cfg.timelapse.saliency_blur_px),
                 )
@@ -303,6 +327,12 @@ def render_mind_map(paths: RunPaths, cached: list[Cached], theme: Theme) -> Path
     """Probe frames placed by UMAP of the GRU features, colored by turn direction."""
     cfg = paths.load_config()
     tl = cfg.timelapse
+    turn_head = next(
+        h
+        for h in json.loads((paths.meta / "action_space.json").read_text())["heads"]
+        if h["name"] == "turn"
+    )
+    n_turn = len(turn_head["choices"])
     fps, n_out = int(tl.fps), int(int(tl.fps) * max(5.0, duration_s(tl.duration_s) / 2))
     coords = np.load(tl_dir(paths) / "umap.npz")
     final = coords[cached[-1].ck.label]
@@ -315,8 +345,9 @@ def render_mind_map(paths: RunPaths, cached: list[Cached], theme: Theme) -> Path
     bg = hex_to_rgb(theme.background)
 
     def turn_dir(logits: np.ndarray) -> list[str]:
-        a = logits[:, :7].argmax(1)
-        return ["none" if x == 0 else ("left" if x <= 3 else "right") for x in a]
+        a = logits[:, :n_turn].argmax(1)
+        half = (n_turn - 1) // 2
+        return ["none" if x == 0 else ("left" if x <= half else "right") for x in a]
 
     with VideoWriter(out, size, size, fps, 20) as w:
         n_ck = len(cached)
@@ -327,7 +358,7 @@ def render_mind_map(paths: RunPaths, cached: list[Cached], theme: Theme) -> Path
             nxt = min(c + 1, n_ck - 1)
             p = (1 - f) * coords[cached[c].ck.label] + f * coords[cached[nxt].ck.label]
             dirs = turn_dir(cached[c].probe_logits)
-            fire = cached[c].probe_logits[:, 7:9].argmax(1) == 1
+            fire = cached[c].probe_logits[:, n_turn : n_turn + 2].argmax(1) == 1
             img = np.empty((size, size, 3), np.uint8)
             img[:] = bg
             xy = (p - lo) / (hi - lo)
@@ -343,7 +374,7 @@ def render_mind_map(paths: RunPaths, cached: list[Cached], theme: Theme) -> Path
             img = text(
                 img,
                 (40, 76),
-                f"{len(xy)} fixed probe frames placed by UMAP of the memory "
+                f"{len(xy)} fixed probe frames; UMAP fit on the final checkpoint's memory "
                 "state; filled: fires, ring: holds fire",
                 15,
                 theme.subtext,
@@ -373,7 +404,8 @@ def main(argv: list[str] | None = None) -> None:
     if args.duration:
         DURATION_OVERRIDE["s"] = args.duration
     if args.skip_cache:
-        cks = subsample(list_checkpoints(paths), args.max_checkpoints)
+        cached_cks = [c for c in list_checkpoints(paths) if cache_path(paths, c).exists()]
+        cks = subsample(cached_cks, args.max_checkpoints)
     else:
         cks = build_cache(paths, args.workers, args.rebuild_cache, args.max_checkpoints)
     units_info = json.loads((tl_dir(paths) / "units.json").read_text())

@@ -58,6 +58,32 @@ def test_config_diff_flags_learning_changes_only():
     assert config_diff(a, b) == ["reward.kill: 1.0 -> 2.0"]
 
 
+def _complete_checkpoint(path, age_s=600):
+    import os
+    import time
+    import zipfile
+
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("data.pkl", b"x")
+    old = time.time() - age_s
+    os.utime(path, (old, old))
+
+
+def test_incomplete_checkpoints_are_skipped(tmp_path):
+    from doomscent.checkpoints import is_complete
+
+    done = tmp_path / "a.pth"
+    _complete_checkpoint(done)
+    fresh = tmp_path / "b.pth"
+    _complete_checkpoint(fresh, age_s=0)
+    truncated = tmp_path / "c.pth"
+    truncated.write_bytes(done.read_bytes()[:10])
+    import os
+
+    os.utime(truncated, (0, 0))
+    assert is_complete(done) and not is_complete(fresh) and not is_complete(truncated)
+
+
 def test_list_checkpoints_by_boundary(tmp_path):
     root = tmp_path / "r"
     cfg = load_config("v0_defend_center_s1.yaml")
@@ -70,13 +96,25 @@ def test_list_checkpoints_by_boundary(tmp_path):
         "checkpoint_000000070_516096.pth",
         "checkpoint_000000071_524288.pth",
     ):
-        (paths.milestone_dir / name).write_bytes(b"")
+        _complete_checkpoint(paths.milestone_dir / name)
     cks = list_checkpoints(paths)
     assert [(c.step, c.regular) for c in cks] == [(0, True), (100_000, False), (500_000, True)]
     assert cks[2].env_steps == 516096 and cks[2].label == "step_0500000"
 
 
 def test_resume_allows_eval_changes_but_not_learning_changes():
-    a = OmegaConf.create({"record": {"crf": 20}, "eval": {"x": 1}, "train": {"gamma": 0.99}})
-    b = OmegaConf.create({"record": {"crf": 30}, "eval": {"x": 2}, "train": {"gamma": 0.995}})
-    assert config_diff(a, b) == ["train.gamma: 0.99 -> 0.995"]
+    a = OmegaConf.create(
+        {
+            "record": {"crf": 20},
+            "eval": {"num_workers": 2, "episodes": 100},
+            "train": {"gamma": 0.99},
+        }
+    )
+    b = OmegaConf.create(
+        {
+            "record": {"crf": 30},
+            "eval": {"num_workers": 4, "episodes": 50},
+            "train": {"gamma": 0.995},
+        }
+    )
+    assert config_diff(a, b) == ["eval.episodes: 100 -> 50", "train.gamma: 0.99 -> 0.995"]

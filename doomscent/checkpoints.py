@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import re
+import time
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -47,13 +49,26 @@ def intervals(paths: RunPaths) -> tuple[int, int]:
     return regular, (dense or regular)
 
 
+SETTLE_SECONDS = 20.0  # Sample Factory writes milestones in place, not via a temp file
+
+
+def is_complete(f: Path, settle_s: float = SETTLE_SECONDS) -> bool:
+    """A checkpoint is usable once it has stopped changing and is a complete zip archive."""
+    try:
+        if time.time() - f.stat().st_mtime < settle_s:
+            return False
+        return zipfile.is_zipfile(f)
+    except OSError:
+        return False
+
+
 def list_checkpoints(paths: RunPaths) -> list[Checkpoint]:
-    """All milestone checkpoints, one per boundary (the first saved past it), by step."""
+    """All complete milestone checkpoints, one per boundary (the first saved past it)."""
     regular, every = intervals(paths)
     found: dict[int, Checkpoint] = {}
     for f in sorted(paths.milestone_dir.glob("checkpoint_*.pth")):
         m = _NAME.search(f.name)
-        if not m:
+        if not m or not is_complete(f):
             continue
         train_step, env_steps = int(m.group(1)), int(m.group(2))
         boundary = (env_steps // every) * every
@@ -79,7 +94,10 @@ def resolve_checkpoint(paths: RunPaths, spec: str) -> Checkpoint:
         if not p.exists():
             raise FileNotFoundError(f"no best checkpoint recorded yet ({p})")
         step = int(json.loads(p.read_text())["step"])
-        return next(c for c in cks if c.step == step)
+        for c in cks:
+            if c.step == step:
+                return c
+        raise FileNotFoundError(f"best step {step} has no checkpoint in {paths.milestone_dir}")
     step = parse_steps(s.removeprefix("step_"))
     for c in cks:
         if c.step == step:

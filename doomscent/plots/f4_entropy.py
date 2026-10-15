@@ -29,7 +29,7 @@ def build(paths: RunPaths) -> FigureSpec:
         if drop > 0.05
         else f"{first.capitalize()} entropy stays near {sm[-1]:.2f} nats"
     )
-    n_flag = len(flags)
+    n_flag = len(flags.drop_duplicates(["step", "episode"])) if len(flags) else 0
     sub = subtitle(paths, 1, f"thin: raw, bold: moving average; ticks: {n_flag} flagged episodes")
 
     def draw(fig, theme, size):

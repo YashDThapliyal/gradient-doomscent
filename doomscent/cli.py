@@ -16,6 +16,8 @@ COMMANDS = {
     "baseline": "doomscent.baseline",
     "throughput": "doomscent.throughput",
     "dashboard": "doomscent.dashboard",
+    "highlights": "doomscent.highlights",
+    "sidebyside": "doomscent.sidebyside",
 }
 
 
