@@ -23,7 +23,13 @@ from typing import Any
 import pandas as pd
 from omegaconf import OmegaConf
 
-from doomscent.checkpoints import Checkpoint, best_pointer, list_checkpoints
+from doomscent.checkpoints import (
+    SETTLE_SECONDS,
+    Checkpoint,
+    best_pointer,
+    is_complete,
+    list_checkpoints,
+)
 from doomscent.evaluate import evaluate
 from doomscent.metrics import write_train_csv
 from doomscent.runs import RunPaths
@@ -165,10 +171,14 @@ def run_watcher(paths: RunPaths, poll: float, once: bool = False) -> None:
                 process_checkpoint(paths, ck)
             except Exception as e:  # keep watching; this checkpoint is retried next poll
                 log(paths, f"evaluation of {ck.label} failed, will retry: {type(e).__name__}: {e}")
+        settling = [f for f in paths.milestone_dir.glob("checkpoint_*.pth") if not is_complete(f)]
+        if training_done and not todo and settling:
+            time.sleep(SETTLE_SECONDS)  # a checkpoint is still being written or just adopted
+            continue
         if training_done and not todo:
             final_dir = paths.clips / "final"
-            if not any(final_dir.glob("*.mp4")):
-                final = list_checkpoints(paths)[-1]
+            final = list_checkpoints(paths)[-1]
+            if not any(final_dir.glob(f"*__step_{final.step:07d}__*.mp4")):
                 n = int(paths.load_config().eval.final_clip_episodes)
                 record_clips(paths, final, "final", n, ["plain", "minimap", "overlay"])
                 log(paths, f"final clips recorded from {final.label}")
