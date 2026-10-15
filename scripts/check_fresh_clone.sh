@@ -16,5 +16,7 @@ uv run doomscent train --config configs/v0_defend_center_s1.yaml run_name=repro_
   train.train_for_env_steps=500000 train.dense_checkpoint_every_env_steps=0 train.wandb.enabled=false > train.log 2>&1
 cat runs/repro_check/TRAINING_DONE.json; echo
 uv run doomscent evaluate --run repro_check --ckpt latest --episodes 20 --workers 4 --no-render \
-  | grep -E '"(ckpt|kills|kills_ci_lo|kills_ci_hi|episodes)"'
+  > eval.json 2>eval.err
+grep -E '"(ckpt|kills|kills_ci_lo|kills_ci_hi|episodes)"' eval.json
+grep -q '"ckpt": "step_0500000"' eval.json || { echo "FAIL: did not evaluate the trained 500K checkpoint"; exit 1; }
 echo "fresh clone check passed"
