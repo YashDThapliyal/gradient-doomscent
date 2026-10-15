@@ -6,14 +6,10 @@ Not written yet. v0 is in progress.
 
 ## Status
 
-- **Paused 2026-10-14 15:54 at the user's request** (laptop closing). Nothing is running.
-- Where things stand:
-  - Seeds 1, 2, 3 (`v0_defend_center_s1`, `_s2`, `_s3`) were stopped cleanly with Ctrl-C at about 1.34M, 1.31M, and 1.27M of 20M env steps. Each saved a checkpoint on exit (`runs/<run>/sf/checkpoint_p0/checkpoint_*.pth`) and resumes from it.
-  - Eval watchers were stopped mid-re-evaluation after the console-overlay fix. Re-evaluation restarts for any checkpoint not yet in `metrics/eval.csv`, so nothing is lost.
-  - The smoke run (`v0_smoke`, finished training at 4.02M) is being re-evaluated so gate 7 can be re-confirmed with correct numbers; only step 0 is done (0.00 kills).
-- **To resume:** `scripts/resume_v0.sh` (starts tmux sessions `train_v0_defend_center_s<k>`, `watch_v0_defend_center_s<k>`, `watch_v0_smoke`).
-- Remaining time once resumed: about 5 to 6 hours of training (3 runs at about 0.9K to 1.3K FPS each, slowed by the eval watchers), then about 1.5 to 2 hours for step 10.
-- Logs: `runs/<run>/logs/train.log`, `logs/eval_watcher.log`.
+- Resumed 2026-10-14 17:28. At 17:35 the 3 concurrent runs plus 4 eval watchers pushed the load average to 299 on 12 cores (81 Doom engine processes) and made the Mac nearly unusable, so **seeds now train one at a time**: `scripts/queue_v0.sh` (tmux `v0_queue`) waits for each run's `TRAINING_DONE.json`, then starts the next seed and its eval watcher, and re-evaluates the smoke run at the end. Seeds 2 and 3 were stopped with Ctrl-C (checkpoints at 1.48M and 1.40M) and resume from there.
+- Running now: `train_v0_defend_center_s1` (about 2.5K FPS alone), `watch_v0_defend_center_s1`, `v0_queue`. All at low CPU priority.
+- Estimate: about 2 hours per seed, so about 6.5 hours for all three, then about 1.5 to 2 hours for step 10.
+- Logs: `runs/<run>/logs/train.log`, `logs/eval_watcher.log`, `runs/queue_v0.log`.
 
 ## Gates
 
@@ -103,6 +99,7 @@ Not written yet. v0 is in progress.
 - **Wall-clock limit observer.** Sample Factory 2.1.1's `--train_for_seconds` never fires in the parallel runner (its `total_train_seconds` is never updated); `train.max_wall_seconds` uses our own observer instead. Only the throughput test uses it.
 - **Detector tuning (before the main runs).** On the smoke run's 500K evaluation, spinning fired on 45 of 100 episodes, wasted fire on 30, reward spike on 6. Tightened: spinning needs 95% of steps turning and 95% one way; wasted fire needs at least 22 shots at no more than 5% accuracy; the reward spike compares an episode with the other episodes of the same checkpoint (comparing with the previous checkpoint flagged ordinary learning as an exploit). Re-running the detectors on those same 100 sidecars: wasted fire 1, reward spike 0, spinning still 45. In Defend the Center the agent cannot move, so a checkpoint that spins does so in every episode; that is a policy-wide strategy, and no threshold makes it rare. Rendered flagged clips are capped at 3 per detector per evaluation; every hit is still logged in `flagged.csv`.
 - **Clip budget per evaluation:** first 3 episodes, the best-scoring one, and the 2 strongest multi-kill streaks (the streak rule matched 25 of 100 episodes and made each evaluation take about 5 minutes). Eval watchers use 2 processes each so three of them fit beside three trainings.
+- **Seeds train one at a time, not concurrently.** The throughput test favored 3 concurrent runs (4.7K vs 2.9K FPS total), but with eval watchers on top the Mac was overloaded (load 299) while the user was working on it. One run at a time gets about 2.5K FPS, so total wall time is nearly the same. Each run's config is unchanged (still 3 workers x 8 envs).
 - **Training length: 20M env steps per seed.** The smoke run was still improving at 4M (held-out 4.04 at 2M, training kills 5.7 at 3.5M); 20M is affordable on this machine (about 4 hours with 3 concurrent runs).
 - `spec.md` and `claude.md` were provided in lowercase. They were renamed (contents untouched) to `SPEC.md` and `CLAUDE.md`, the names CLAUDE.md and the README use, so links work on case-sensitive systems such as Linux and GitHub.
 
