@@ -23,3 +23,5 @@ Curated clips and figures promoted from `runs/`. One line each: what it shows, r
 | `timelapse/brain_only.mp4` | Brain views 1 and 2 full frame | v0_defend_center_s1 | same command |
 | `timelapse/attention_before_after.mp4` | Same fight moment, 100K vs best (20M), gradient saliency on one shared scale: the early network barely attends, the trained one locks onto the monsters | v0_defend_center_s1 | same command |
 | `timelapse/mind_map.mp4` | UMAP of the memory state on 300 fixed probe frames, colored by turn direction, across checkpoints | v0_defend_center_s1 | same command |
+| `timelapse/s2/` | All five timelapse videos (16x9, mobile, brain only, attention before/after, mind map) for seed 2 | v0_defend_center_s2, 41 checkpoints 0 to 20M (every 500K) | `uv run doomscent timelapse --run v0_defend_center_s2` |
+| `timelapse/s3/` | All five timelapse videos (16x9, mobile, brain only, attention before/after, mind map) for seed 3 | v0_defend_center_s3, 41 checkpoints 0 to 20M (every 500K) | `uv run doomscent timelapse --run v0_defend_center_s3` |

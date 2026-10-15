@@ -3,8 +3,6 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 step() { echo "[$(date '+%F %T')] $*"; }
-step "smoke re-evaluation"
-uv run doomscent eval-watcher --run v0_smoke >> runs/v0_smoke/logs/eval_watcher.out 2>&1
 for s in 1 2 3; do
   r="v0_defend_center_s$s"
   step "confirm best $r"
@@ -18,9 +16,11 @@ for s in 1 2 3; do
   step "highlights $r"; uv run doomscent highlights --run "$r" --ckpt best || step "highlights $r FAILED"
   step "sidebyside $r"; uv run doomscent sidebyside --run "$r" --ckpts 0,best || step "sidebyside $r FAILED"
 done
-step "figures smoke"; uv run doomscent figures --run v0_smoke || step "figures smoke FAILED"
 free_gb() { df -g /System/Volumes/Data | tail -1 | awk '{print $4}'; }
-step "timelapse s1 (free $(free_gb) GB)"; uv run doomscent timelapse --run v0_defend_center_s1 --workers 4 || step "timelapse s1 FAILED"
+for s in 1 2 3; do
+  step "timelapse s$s (free $(free_gb) GB)"
+  uv run doomscent timelapse --run "v0_defend_center_s$s" --workers 4 || step "timelapse s$s FAILED"
+done
 if [ "$(free_gb)" -ge 4 ]; then
   step "fresh clone check"; scripts/check_fresh_clone.sh > runs/fresh_clone_check.log 2>&1 || step "fresh clone check FAILED"
 else

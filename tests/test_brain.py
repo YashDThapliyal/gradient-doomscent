@@ -69,3 +69,19 @@ def test_saliency_shape_and_nonnegative():
     obs = np.random.default_rng(1).integers(0, 255, (3, 72, 128), dtype=np.uint8)
     sal = saliency(model, obs, torch.zeros(1, 512), [7, 2])
     assert sal.shape == (72, 128) and (sal >= 0).all() and sal.max() > 0
+
+
+def test_timelapse_keeps_cached_checkpoints_whose_files_are_gone(tmp_path, monkeypatch) -> None:
+    from doomscent.checkpoints import Checkpoint
+    from doomscent.timelapse import cache
+
+    (tmp_path / "cache").mkdir()
+    for step in (0, 500_000, 1_000_000):
+        (tmp_path / "cache" / f"step_{step:07d}.npz").touch()
+    (tmp_path / "cache" / "step_1500000.tmp.npz").touch()  # half-written, ignored
+    on_disk = Checkpoint(tmp_path / "c.pth", 1, 1_000_000, 1_000_000, True)
+    monkeypatch.setattr(cache, "tl_dir", lambda paths: tmp_path)
+    monkeypatch.setattr(cache, "list_checkpoints", lambda paths: [on_disk])
+    cks = cache.timelapse_checkpoints(None)
+    assert [c.step for c in cks] == [0, 500_000, 1_000_000]
+    assert cks[-1] is on_disk  # a real checkpoint file wins over its cache entry

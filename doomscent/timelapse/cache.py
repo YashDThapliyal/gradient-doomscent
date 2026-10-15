@@ -144,12 +144,10 @@ def probe_forward(model, probe: dict[str, np.ndarray], units: dict[str, list[int
 
 
 def _cache_one(job: dict[str, Any]) -> str:
-    from omegaconf import OmegaConf
 
     from doomscent.env import make_env
     from doomscent.policy import build_model, load_weights
-    from doomscent.recording import read_sidecar, record_episode
-    from doomscent.render import render_demo
+    from doomscent.recording import record_episode
 
     torch.set_num_threads(1)
     TL_SUBDIR["name"] = job["subdir"]  # worker processes do not inherit the parent's setting
@@ -171,7 +169,7 @@ def _cache_one(job: dict[str, Any]) -> str:
     policy = BrainPolicy(model, units, head_sizes, heads)
     seed = int(cfg.seeds.eval_start) + int(cfg.timelapse.fight_seed_offset)
     fight_dir = tl_dir(paths) / "cache" / "fight"
-    res, demo, sidecar = record_episode(env, policy, seed, fight_dir, paths.name, ck.step, 0)
+    res, demo, _ = record_episode(env, policy, seed, fight_dir, paths.name, ck.step, 0)
     env.close()
     sal = np.stack(policy.log["sal"])
     scale = float(np.quantile(sal, 0.995)) or 1.0
@@ -188,8 +186,19 @@ def _cache_one(job: dict[str, Any]) -> str:
             ),
         }
     )
+    data["footage_frames"] = np.array(render_footage(paths, ck, demo))
+    out = tl_dir(paths) / "cache" / f"{ck.label}.npz"
+    tmp = out.with_name(out.stem + ".tmp.npz")
+    np.savez_compressed(tmp, **data)
+    tmp.replace(out)
+    return ck.label
+
+
+def footage_rc(cfg: Any) -> dict[str, Any]:
+    from omegaconf import OmegaConf
+
     rc = OmegaConf.to_container(cfg.record, resolve=True)
-    rc.update(
+    rc.update(  # type: ignore[union-attr]
         {
             "width": FOOTAGE_RES[0],
             "height": FOOTAGE_RES[1],
@@ -197,17 +206,49 @@ def _cache_one(job: dict[str, Any]) -> str:
             "gop": 35,  # keyframe every second for fast seeking
             "crf": int(cfg.record.get("routine_crf", 30)),  # shown at 924x520; keeps cache small
         }
-    )  # type: ignore[union-attr]
+    )
+    return rc  # type: ignore[return-value]
+
+
+def render_footage(paths: RunPaths, ck: Checkpoint, demo: Path) -> int:
+    """Replay a checkpoint's fight demo into cache/footage/; returns the replayed tics."""
+    from doomscent.recording import read_sidecar, sidecar_path_for
+    from doomscent.render import render_demo
+
     footage_dir = tl_dir(paths) / "cache" / "footage"
-    rr = render_demo(demo, read_sidecar(sidecar), ["plain"], footage_dir, rc)  # type: ignore[arg-type]
-    final = footage_dir / f"{ck.label}.mp4"
-    rr.outputs["plain"].replace(final)
-    data["footage_frames"] = np.array(rr.replay_tics)
-    out = tl_dir(paths) / "cache" / f"{ck.label}.npz"
-    tmp = out.with_name(out.stem + ".tmp.npz")
-    np.savez_compressed(tmp, **data)
-    tmp.replace(out)
-    return ck.label
+    rc = footage_rc(paths.load_config())
+    rr = render_demo(demo, read_sidecar(sidecar_path_for(demo)), ["plain"], footage_dir, rc)
+    rr.outputs["plain"].replace(footage_dir / f"{ck.label}.mp4")
+    return rr.replay_tics
+
+
+def ensure_footage(paths: RunPaths, cks: list[Checkpoint]) -> None:
+    """Re-render footage that was deleted; the fight demos in cache/fight/ are kept."""
+    for ck in cks:
+        if (tl_dir(paths) / "cache" / "footage" / f"{ck.label}.mp4").exists():
+            continue
+        demos = sorted((tl_dir(paths) / "cache" / "fight").glob(f"*__{ck.label}__*.lmp"))
+        if not demos:
+            raise FileNotFoundError(f"no fight demo for {ck.label}; rebuild with --rebuild-cache")
+        render_footage(paths, ck, demos[-1])
+        print(f"[timelapse footage] {ck.label}", flush=True)
+
+
+def cached_checkpoints(paths: RunPaths) -> list[Checkpoint]:
+    """Checkpoints known from the cache alone (their .pth files may have been thinned)."""
+    out = []
+    for f in sorted((tl_dir(paths) / "cache").glob("step_*.npz")):
+        if not f.name.endswith(".tmp.npz"):
+            step = int(f.stem.removeprefix("step_"))
+            out.append(Checkpoint(f, 0, step, step, True))
+    return out
+
+
+def timelapse_checkpoints(paths: RunPaths) -> list[Checkpoint]:
+    """Every checkpoint on disk, plus every cached one whose file is gone, in step order."""
+    by_step = {c.step: c for c in cached_checkpoints(paths)}
+    by_step.update({c.step: c for c in list_checkpoints(paths)})
+    return [by_step[k] for k in sorted(by_step)]
 
 
 def add_changes(paths: RunPaths, cks: list[Checkpoint]) -> None:
@@ -251,7 +292,7 @@ def build_cache(
 ) -> list[Checkpoint]:
     ensure_units(paths)
     ensure_probe(paths)
-    cks = subsample(list_checkpoints(paths), max_checkpoints)
+    cks = subsample(timelapse_checkpoints(paths), max_checkpoints)
     jobs = [
         {
             "run": paths.name,
@@ -262,7 +303,7 @@ def build_cache(
             "subdir": TL_SUBDIR["name"],
         }
         for c in cks
-        if force or not cache_path(paths, c).exists()
+        if not cache_path(paths, c).exists() or (force and c.path.suffix == ".pth")
     ]
     (tl_dir(paths) / "cache").mkdir(parents=True, exist_ok=True)
     if jobs:
@@ -271,4 +312,5 @@ def build_cache(
                 print(f"[timelapse cache] {label} ({i + 1}/{len(jobs)})", flush=True)
     add_changes(paths, cks)
     fit_umap(paths, cks)
+    ensure_footage(paths, cks)
     return cks

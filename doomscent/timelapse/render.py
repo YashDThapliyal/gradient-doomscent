@@ -23,12 +23,20 @@ import cv2
 import numpy as np
 import pandas as pd
 
-from doomscent.checkpoints import Checkpoint, best_pointer, list_checkpoints
+from doomscent.checkpoints import Checkpoint, best_pointer
 from doomscent.plots.common import fmt_steps
 from doomscent.runs import RunPaths
 from doomscent.style import DARK, Theme, hex_to_rgb
 from doomscent.timelapse.brain import LAYERS
-from doomscent.timelapse.cache import TL_SUBDIR, build_cache, cache_path, subsample, tl_dir
+from doomscent.timelapse.cache import (
+    TL_SUBDIR,
+    build_cache,
+    cache_path,
+    cached_checkpoints,
+    ensure_footage,
+    subsample,
+    tl_dir,
+)
 from doomscent.timelapse.panels import (
     PAIRS,
     BrainLayout,
@@ -404,8 +412,8 @@ def main(argv: list[str] | None = None) -> None:
     if args.duration:
         DURATION_OVERRIDE["s"] = args.duration
     if args.skip_cache:
-        cached_cks = [c for c in list_checkpoints(paths) if cache_path(paths, c).exists()]
-        cks = subsample(cached_cks, args.max_checkpoints)
+        cks = subsample(cached_checkpoints(paths), args.max_checkpoints)
+        ensure_footage(paths, cks)
     else:
         cks = build_cache(paths, args.workers, args.rebuild_cache, args.max_checkpoints)
     units_info = json.loads((tl_dir(paths) / "units.json").read_text())
