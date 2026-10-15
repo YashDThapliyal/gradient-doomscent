@@ -4,6 +4,20 @@ Reinforcement learning agents that learn to fight in Doom from raw pixels, using
 
 This repo is built in layered versions (see `SPEC.md`). **v0, "It learns to fight"**, trains an agent on ViZDoom's Defend the Center scenario (stand in the middle of a round room and kill monsters closing in from every side) and produces the whole asset pipeline: held-out evaluation, demo recordings rendered to 1280x720 clips, anomaly flags, figures, a progress montage, and a training timelapse of the network's "brain".
 
+## v0 results
+
+Held-out kills per episode (100 unseen games, deterministic policy), best checkpoint of each seed re-scored on 100 fresh held-out games:
+
+| | Kills per episode |
+| --- | --- |
+| Scripted spin-and-shoot baseline | 4.42 |
+| v0 gate (1.5x baseline) | 6.63 |
+| Seed 1 (best at 20M steps) | 10.48 [10.21, 10.74] |
+| Seed 2 (best at 19M steps) | 10.49 [10.21, 10.77] |
+| Seed 3 (best at 18M steps) | 10.56 [10.26, 10.84] |
+
+The agent first reinvents the spin-and-shoot strategy, then learns to hold fire until a monster is centered: accuracy rises from 10% to 41% with the same 26 bullets. See the figures in `assets/figures/`, the clips and timelapse listed in `assets/INDEX.md`, and the full report at the top of `PROGRESS.md`.
+
 Results, gate numbers, and decisions are in [`PROGRESS.md`](PROGRESS.md). Odd behaviors the agents found are in [`WEIRD.md`](WEIRD.md). Curated clips and figures are listed in [`assets/INDEX.md`](assets/INDEX.md).
 
 ## Setup
